@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matching - Agentic AI Chat</title>
+    <link rel="stylesheet" href="/matching.css">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script type="module">
+        // Initialize Firebase
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, query, where, getDocs, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyBsoXFwCpPWCWo_FadssX_azhJnRaReSzg",
+            authDomain: "allinonehrm.firebaseapp.com",
+            projectId: "allinonehrm",
+            storageBucket: "allinonehrm.firebasestorage.app",
+            messagingSenderId: "1087467621387",
+            appId: "1:1087467621387:web:fa009cd0144ed37cb8cb0e",
+            measurementId: "G-W3SHH2Y9GE"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        
+        // Make Firebase available globally
+        window.firebase = { 
+            db, 
+            collection, 
+            addDoc,
+            query,
+            where,
+            getDocs,
+            serverTimestamp
+        };
+        
+        console.log('✅ Firebase initialized on matching page');
+    </script>
+</head>
+<body>
+    <div class="matching-container">
+        <div class="matching-header">
+            <h1 class="matching-title">Finding Your Matches</h1>
+            <p class="matching-subtitle" id="matchingSubtitle">Discovering amazing connections...</p>
+        </div>
+
+        <div class="orbital-container" id="orbitalContainer">
+            <div class="orbital-center">
+                <div class="center-glow"></div>
+                <div class="center-avatar" id="centerAvatar">
+                    <div class="center-avatar-image">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                            <path d="M12 8C13.1 8 14 8.9 14 10C14 11.1 13.1 12 12 12C10.9 12 10 11.1 10 10C10 8.9 10.9 8 12 8Z" fill="currentColor"/>
+                            <path d="M12 14C14.67 14 20 15.33 20 18V20H4V18C4 15.33 9.33 14 12 14Z" fill="currentColor"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Orbital avatars will be dynamically generated here -->
+        </div>
+
+        <div class="matching-footer">
+            <div class="loading-indicator" id="loadingIndicator">
+                <div class="loading-dot"></div>
+                <div class="loading-dot"></div>
+                <div class="loading-dot"></div>
+            </div>
+            <p class="loading-text" id="loadingText">Searching for matches...</p>
+        </div>
+
+    </div>
+
+    <script src="/matching.js"></script>
+</body>
+</html>

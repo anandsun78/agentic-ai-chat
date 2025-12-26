@@ -1,0 +1,38 @@
+{
+  "name": "agentic-ai-chat",
+  "version": "2.0.0",
+  "description": "Agentic AI Chat - AI-Powered Social Networking Platform",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "server": "node server.js",
+    "producer": "node examples/send-message.js",
+    "consumer": "node examples/consume-messages.js",
+    "consumer:unique": "KAFKA_USE_UNIQUE_GROUP=true node examples/consume-messages-unique.js",
+    "listen": "node examples/listen-imessages.js",
+    "reply": "node examples/listen-and-reply.js",
+    "send-reply": "node examples/send-reply.js",
+    "api-examples": "node examples/agentic-api-examples.js",
+    "request-chats": "node examples/request-chats-via-kafka.js",
+    "kafka-bridge": "node examples/kafka-to-api-bridge.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "agentic",
+    "chat",
+    "kafka",
+    "streaming"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
+    "axios": "^1.13.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.22.1",
+    "firebase-admin": "^13.6.0",
+    "kafkajs": "^2.2.4",
+    "ws": "^8.18.3"
+  }
+}
