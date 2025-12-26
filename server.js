@@ -11,13 +11,13 @@ const KafkaConsumer = require('./kafka/consumer');
 const AgenticAPIClient = require('./api/agentic-client');
 const SocialNetworkAgent = require('./backend/chatbot/service');
 // Firebase service - handle errors gracefully
-let firebaseService = null;
+let firebaseBridge = null;
 try {
-  firebaseService = require('./backend/firebase/service');
+  firebaseBridge = require('./backend/firebase/service');
 } catch (error) {
   console.warn('⚠️  Firebase service not available:', error.message);
   console.warn('   Creating stub functions to prevent errors');
-  firebaseService = {
+  firebaseBridge = {
     initializeFirebase: () => { console.warn('Firebase not configured'); },
     saveKafkaEventToFirebase: async () => { return null; },
     saveMessageReceivedToFirebase: async () => { return null; },
@@ -70,19 +70,19 @@ app.get('/', (req, res) => {
   });
 });
 
-// Store active consumer and clients
-let activeConsumer = null;
-let isListening = false;
-const connectedClients = new Set();
+// Track Kafka consumer and websocket clients
+let kafkaConsumerHandle = null;
+let listenerActive = false;
+const wsClients = new Set();
 
 // Store Kafka events in memory for phone number lookup
-const kafkaEvents = [];
-const MAX_EVENTS = 1000;
+const eventBuffer = [];
+const MAX_BUFFERED_EVENTS = 1000;
 
 // Initialize API client (with error handling)
-let apiClient = null;
+let agenticClient = null;
 try {
-  apiClient = new AgenticAPIClient();
+  agenticClient = new AgenticAPIClient();
 } catch (error) {
   console.warn('⚠️  API client initialization failed:', error.message);
   console.warn('   Some endpoints may not work until API credentials are configured.');
@@ -91,15 +91,15 @@ try {
 // Initialize Firebase Admin SDK (non-blocking)
 setTimeout(() => {
   try {
-    if (firebaseService && firebaseService.initializeFirebase) {
-      const db = firebaseService.initializeFirebase();
+    if (firebaseBridge && firebaseBridge.initializeFirebase) {
+      const db = firebaseBridge.initializeFirebase();
       if (db) {
         console.log('✅ Firebase service initialized for Kafka event storage');
         console.log('✅ Firebase functions available:', {
-          saveKafkaEventToFirebase: typeof firebaseService.saveKafkaEventToFirebase === 'function',
-          saveMessageReceivedToFirebase: typeof firebaseService.saveMessageReceivedToFirebase === 'function',
-          saveMessageSentToFirebase: typeof firebaseService.saveMessageSentToFirebase === 'function',
-          saveTypingIndicatorToFirebase: typeof firebaseService.saveTypingIndicatorToFirebase === 'function'
+          saveKafkaEventToFirebase: typeof firebaseBridge.saveKafkaEventToFirebase === 'function',
+          saveMessageReceivedToFirebase: typeof firebaseBridge.saveMessageReceivedToFirebase === 'function',
+          saveMessageSentToFirebase: typeof firebaseBridge.saveMessageSentToFirebase === 'function',
+          saveTypingIndicatorToFirebase: typeof firebaseBridge.saveTypingIndicatorToFirebase === 'function'
         });
       } else {
         console.warn('⚠️  Firebase initialized but database not available');
@@ -117,9 +117,9 @@ setTimeout(() => {
 /**
  * Broadcast message to all connected WebSocket clients
  */
-function broadcast(data) {
+function broadcastWs(data) {
   const message = JSON.stringify(data);
-  connectedClients.forEach((client) => {
+  wsClients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(message);
     }
@@ -129,22 +129,22 @@ function broadcast(data) {
 /**
  * Setup Kafka consumer with event handlers
  */
-function setupConsumer() {
-  if (activeConsumer) {
-    return activeConsumer;
+function ensureConsumer() {
+  if (kafkaConsumerHandle) {
+    return kafkaConsumerHandle;
   }
 
   try {
     // Use unique consumer group to avoid conflicts
     process.env.KAFKA_USE_UNIQUE_GROUP = 'true';
 
-    const consumer = new KafkaConsumer();
+    const kafkaConsumer = new KafkaConsumer();
 
     // Handle incoming messages
-    consumer.onEvent('message.received', async (eventData) => {
+    kafkaConsumer.onEvent('message.received', async (eventData) => {
       const { data } = eventData;
       
-      const messageData = {
+      const wsPayload = {
         type: 'message.received',
         event: {
           id: eventData.event_id,
@@ -163,21 +163,21 @@ function setupConsumer() {
       };
 
       // Store event for phone number lookup
-      kafkaEvents.push({
+      eventBuffer.push({
         phoneNumber: data.from_phone,
         eventType: 'message.received',
         timestamp: eventData.created_at,
         chatId: data.chat_id,
-        ...messageData
+        ...wsPayload
       });
 
-      // Keep only last MAX_EVENTS
-      if (kafkaEvents.length > MAX_EVENTS) {
-        kafkaEvents.shift();
+      // Keep only last MAX_BUFFERED_EVENTS
+      if (eventBuffer.length > MAX_BUFFERED_EVENTS) {
+        eventBuffer.shift();
       }
 
       // Save to Firebase
-      if (firebaseService && typeof firebaseService.saveMessageReceivedToFirebase === 'function') {
+      if (firebaseBridge && typeof firebaseBridge.saveMessageReceivedToFirebase === 'function') {
         try {
           console.log('💾 Saving message.received to Firebase...');
           console.log('   Event data:', JSON.stringify({
@@ -187,14 +187,14 @@ function setupConsumer() {
             chat_id: data.chat_id
           }));
           
-          const messageId = await firebaseService.saveMessageReceivedToFirebase(eventData);
+          const messageId = await firebaseBridge.saveMessageReceivedToFirebase(eventData);
           if (messageId) {
             console.log(`✅ Message saved to Firebase kafka_messages collection (ID: ${messageId})`);
           } else {
             console.warn('⚠️  saveMessageReceivedToFirebase returned null/undefined');
           }
           
-          const eventId = await firebaseService.saveKafkaEventToFirebase('message.received', eventData);
+          const eventId = await firebaseBridge.saveKafkaEventToFirebase('message.received', eventData);
           if (eventId) {
             console.log(`✅ Kafka event saved to Firebase kafka_events collection (ID: ${eventId})`);
           } else {
@@ -210,12 +210,12 @@ function setupConsumer() {
         }
       } else {
         console.warn('⚠️  Firebase service not available for saving message.received');
-        console.warn('   firebaseService exists:', !!firebaseService);
-        console.warn('   saveMessageReceivedToFirebase is function:', typeof firebaseService?.saveMessageReceivedToFirebase);
+        console.warn('   firebaseBridge exists:', !!firebaseBridge);
+        console.warn('   saveMessageReceivedToFirebase is function:', typeof firebaseBridge?.saveMessageReceivedToFirebase);
       }
 
       // Broadcast to all connected clients
-      broadcast(messageData);
+      broadcastWs(wsPayload);
 
       // Process message with Social Network Agent chatbot (non-blocking)
       // Support both text and audio messages
@@ -231,7 +231,7 @@ function setupConsumer() {
       if (chatbotAgent && (hasText || hasAttachments)) {
         console.log(`✅ Triggering chatbot response...`);
         // Process asynchronously without blocking message handling
-        processChatbotResponse(
+        handleChatbotReply(
           data.from_phone, 
           data.text || '', 
           data.chat_id, 
@@ -249,14 +249,14 @@ function setupConsumer() {
     });
 
     // Handle typing indicators
-    consumer.onEvent('typing_indicator.received', async (eventData) => {
+    kafkaConsumer.onEvent('typing_indicator.received', async (eventData) => {
       const { data } = eventData;
       
       // Save to Firebase
-      if (firebaseService && typeof firebaseService.saveTypingIndicatorToFirebase === 'function') {
+      if (firebaseBridge && typeof firebaseBridge.saveTypingIndicatorToFirebase === 'function') {
         try {
-          await firebaseService.saveTypingIndicatorToFirebase('typing_indicator.received', eventData);
-          await firebaseService.saveKafkaEventToFirebase('typing_indicator.received', eventData);
+          await firebaseBridge.saveTypingIndicatorToFirebase('typing_indicator.received', eventData);
+          await firebaseBridge.saveKafkaEventToFirebase('typing_indicator.received', eventData);
           console.log('✅ Typing indicator saved to Firebase');
         } catch (error) {
           console.error('❌ Error saving typing_indicator.received to Firebase:', error);
@@ -264,7 +264,7 @@ function setupConsumer() {
         }
       }
       
-      broadcast({
+      broadcastWs({
         type: 'typing_indicator.received',
         event: {
           id: eventData.event_id,
@@ -278,14 +278,14 @@ function setupConsumer() {
       });
     });
 
-    consumer.onEvent('typing_indicator.removed', async (eventData) => {
+    kafkaConsumer.onEvent('typing_indicator.removed', async (eventData) => {
       const { data } = eventData;
       
       // Save to Firebase
-      if (firebaseService && typeof firebaseService.saveTypingIndicatorToFirebase === 'function') {
+      if (firebaseBridge && typeof firebaseBridge.saveTypingIndicatorToFirebase === 'function') {
         try {
-          await firebaseService.saveTypingIndicatorToFirebase('typing_indicator.removed', eventData);
-          await firebaseService.saveKafkaEventToFirebase('typing_indicator.removed', eventData);
+          await firebaseBridge.saveTypingIndicatorToFirebase('typing_indicator.removed', eventData);
+          await firebaseBridge.saveKafkaEventToFirebase('typing_indicator.removed', eventData);
           console.log('✅ Typing indicator removed saved to Firebase');
         } catch (error) {
           console.error('❌ Error saving typing_indicator.removed to Firebase:', error);
@@ -293,7 +293,7 @@ function setupConsumer() {
         }
       }
       
-      broadcast({
+      broadcastWs({
         type: 'typing_indicator.removed',
         event: {
           id: eventData.event_id,
@@ -308,11 +308,11 @@ function setupConsumer() {
     });
 
     // Handle message.sent events (messages we sent)
-    consumer.onEvent('message.sent', async (eventData) => {
+    kafkaConsumer.onEvent('message.sent', async (eventData) => {
       const { data } = eventData;
       
       // Save to Firebase
-      if (firebaseService && typeof firebaseService.saveMessageSentToFirebase === 'function') {
+      if (firebaseBridge && typeof firebaseBridge.saveMessageSentToFirebase === 'function') {
         try {
           console.log('💾 Saving message.sent to Firebase...');
           console.log('   Event data:', JSON.stringify({
@@ -322,14 +322,14 @@ function setupConsumer() {
             chat_id: data.chat_id
           }));
           
-          const messageId = await firebaseService.saveMessageSentToFirebase(eventData);
+          const messageId = await firebaseBridge.saveMessageSentToFirebase(eventData);
           if (messageId) {
             console.log(`✅ Message sent saved to Firebase kafka_messages collection (ID: ${messageId})`);
           } else {
             console.warn('⚠️  saveMessageSentToFirebase returned null/undefined');
           }
           
-          const eventId = await firebaseService.saveKafkaEventToFirebase('message.sent', eventData);
+          const eventId = await firebaseBridge.saveKafkaEventToFirebase('message.sent', eventData);
           if (eventId) {
             console.log(`✅ Kafka event saved to Firebase kafka_events collection (ID: ${eventId})`);
           } else {
@@ -345,11 +345,11 @@ function setupConsumer() {
         }
       } else {
         console.warn('⚠️  Firebase service not available for saving message.sent');
-        console.warn('   firebaseService exists:', !!firebaseService);
-        console.warn('   saveMessageSentToFirebase is function:', typeof firebaseService?.saveMessageSentToFirebase);
+        console.warn('   firebaseBridge exists:', !!firebaseBridge);
+        console.warn('   saveMessageSentToFirebase is function:', typeof firebaseBridge?.saveMessageSentToFirebase);
       }
       
-      broadcast({
+      broadcastWs({
         type: 'message.sent',
         event: {
           id: eventData.event_id,
@@ -365,8 +365,8 @@ function setupConsumer() {
       });
     });
 
-    activeConsumer = consumer;
-    return consumer;
+    kafkaConsumerHandle = kafkaConsumer;
+    return kafkaConsumer;
   } catch (error) {
     console.error('Error setting up consumer:', error);
     throw error;
@@ -376,19 +376,19 @@ function setupConsumer() {
 /**
  * Process incoming message with chatbot and send response
  */
-async function processChatbotResponse(phoneNumber, messageText, chatId, service = 'iMessage', attachments = []) {
+async function handleChatbotReply(phoneNumber, messageText, chatId, service = 'iMessage', attachments = []) {
   try {
     if (!chatbotAgent) {
       console.warn('⚠️  Chatbot agent not available');
       return;
     }
 
-    if (!firebaseService) {
+    if (!firebaseBridge) {
       console.warn('⚠️  Firebase service not available for chatbot');
       return;
     }
 
-    const db = firebaseService.initializeFirebase();
+    const db = firebaseBridge.initializeFirebase();
     if (!db) {
       console.warn('⚠️  Firebase database not available for chatbot');
       return;
@@ -418,7 +418,7 @@ async function processChatbotResponse(phoneNumber, messageText, chatId, service 
     console.log(`✅ Chatbot generated response: ${responseText.substring(0, 100)}...`);
 
     // Send reply via Agentic API
-    if (!apiClient) {
+    if (!agenticClient) {
       console.warn('⚠️  API client not available, cannot send chatbot response');
       return;
     }
@@ -429,7 +429,7 @@ async function processChatbotResponse(phoneNumber, messageText, chatId, service 
       console.log(`   Response: ${responseText.substring(0, 50)}...`);
       
       // Use same format as listen-and-reply.js (npm run reply)
-      const replyResponse = await apiClient.createChatMessage(chatId, {
+      const replyResponse = await agenticClient.createChatMessage(chatId, {
         message: {
           text: responseText,
         },
@@ -463,7 +463,7 @@ async function processChatbotResponse(phoneNumber, messageText, chatId, service 
       }
 
       // Broadcast chatbot response to connected clients
-      broadcast({
+      broadcastWs({
         type: 'message.sent',
         event: {
           id: replyResponse.data?.id || null,
@@ -490,14 +490,14 @@ async function processChatbotResponse(phoneNumber, messageText, chatId, service 
     }
 
   } catch (error) {
-    console.error('❌ Error in processChatbotResponse:', error);
+    console.error('❌ Error in handleChatbotReply:', error);
     console.error('   Stack:', error.stack);
     // Don't throw - allow message processing to continue
   }
 }
 
 // Initialize Claude AI (Claude 3.5 Sonnet - supports multimodal including audio transcription)
-const claude = new Anthropic({
+const claudeClient = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY || '',
 });
 
@@ -524,7 +524,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    listening: isListening,
+    listening: listenerActive,
   });
 });
 
@@ -547,9 +547,9 @@ app.post('/api/matching/find', async (req, res) => {
     let db = null;
     let userData = null;
     
-    if (firebaseService) {
+    if (firebaseBridge) {
       try {
-        db = firebaseService.initializeFirebase();
+        db = firebaseBridge.initializeFirebase();
         
         // Get user data
         try {
@@ -627,7 +627,7 @@ app.post('/api/matching/find', async (req, res) => {
     }
 
     // Save matches to Firebase
-    if (finalMatches.length > 0 && firebaseService && db) {
+    if (finalMatches.length > 0 && firebaseBridge && db) {
       try {
         const admin = require('firebase-admin');
         await db.collection('user_matches').add({
@@ -1298,7 +1298,7 @@ Respond in JSON format:
 }`;
 
   try {
-    const response = await claude.messages.create({
+    const response = await claudeClient.messages.create({
       model: 'claude-3-5-sonnet-20241022',
       max_tokens: 2000,
       messages: [{
@@ -1337,19 +1337,19 @@ Respond in JSON format:
  */
 app.post('/api/listener/start', async (req, res) => {
   try {
-    if (isListening) {
+    if (listenerActive) {
       return res.status(400).json({
         error: 'Listener is already running',
         listening: true,
       });
     }
 
-    const consumer = setupConsumer();
+    const consumer = ensureConsumer();
     
     await consumer.connect();
     await consumer.start();
     
-    isListening = true;
+    listenerActive = true;
 
     res.json({
       success: true,
@@ -1371,16 +1371,16 @@ app.post('/api/listener/start', async (req, res) => {
  */
 app.post('/api/listener/stop', async (req, res) => {
   try {
-    if (!isListening || !activeConsumer) {
+    if (!listenerActive || !kafkaConsumerHandle) {
       return res.status(400).json({
         error: 'Listener is not running',
         listening: false,
       });
     }
 
-    await activeConsumer.stop();
-    activeConsumer = null;
-    isListening = false;
+    await kafkaConsumerHandle.stop();
+    kafkaConsumerHandle = null;
+    listenerActive = false;
 
     res.json({
       success: true,
@@ -1402,9 +1402,9 @@ app.post('/api/listener/stop', async (req, res) => {
  */
 app.get('/api/listener/status', (req, res) => {
   res.json({
-    listening: isListening,
-    connected: activeConsumer !== null,
-    clients: connectedClients.size,
+    listening: listenerActive,
+    connected: kafkaConsumerHandle !== null,
+    clients: wsClients.size,
   });
 });
 
@@ -1415,7 +1415,7 @@ app.get('/api/listener/status', (req, res) => {
  */
 app.post('/api/reply', async (req, res) => {
   try {
-    if (!apiClient) {
+    if (!agenticClient) {
       return res.status(503).json({
         error: 'API client not initialized',
         message: 'Please configure AGENTIC_API_KEY and AGENTIC_API_BASE_URL environment variables',
@@ -1436,7 +1436,7 @@ app.post('/api/reply', async (req, res) => {
       });
     }
 
-    const response = await apiClient.createChatMessage(chatId, {
+    const response = await agenticClient.createChatMessage(chatId, {
       message: {
         text: message.trim(),
       },
@@ -1468,7 +1468,7 @@ app.post('/api/reply', async (req, res) => {
  */
 app.get('/api/chats/:chatId/messages', async (req, res) => {
   try {
-    if (!apiClient) {
+    if (!agenticClient) {
       return res.status(503).json({
         error: 'API client not initialized',
         message: 'Please configure AGENTIC_API_KEY and AGENTIC_API_BASE_URL environment variables',
@@ -1476,7 +1476,7 @@ app.get('/api/chats/:chatId/messages', async (req, res) => {
     }
 
     const { chatId } = req.params;
-    const response = await apiClient.listChatMessages(chatId);
+    const response = await agenticClient.listChatMessages(chatId);
 
     res.json({
       success: true,
@@ -1510,7 +1510,7 @@ app.get('/api/kafka/check-phone', (req, res) => {
     const normalizedPhone = phone_number.replace(/\D/g, '');
     
     // Check if phone number exists in Kafka events
-    const foundEvents = kafkaEvents.filter(event => {
+    const foundEvents = eventBuffer.filter(event => {
       const eventPhone = event.phoneNumber?.replace(/\D/g, '') || '';
       return eventPhone === normalizedPhone || 
              eventPhone.endsWith(normalizedPhone) || 
@@ -1541,7 +1541,7 @@ app.get('/api/kafka/check-phone', (req, res) => {
  */
 app.get('/api/chats', async (req, res) => {
   try {
-    if (!apiClient) {
+    if (!agenticClient) {
       return res.status(503).json({
         error: 'API client not initialized',
         message: 'Please configure AGENTIC_API_KEY and AGENTIC_API_BASE_URL environment variables',
@@ -1549,7 +1549,7 @@ app.get('/api/chats', async (req, res) => {
     }
 
     const { phone_number, page, per_page } = req.query;
-    const response = await apiClient.listChats({
+    const response = await agenticClient.listChats({
       phoneNumber: phone_number,
       page: page ? parseInt(page) : undefined,
       perPage: per_page ? parseInt(per_page) : undefined,
@@ -1575,14 +1575,14 @@ app.get('/api/chats', async (req, res) => {
  */
 app.post('/api/chats', async (req, res) => {
   try {
-    if (!apiClient) {
+    if (!agenticClient) {
       return res.status(503).json({
         error: 'API client not initialized',
         message: 'Please configure AGENTIC_API_KEY and AGENTIC_API_BASE_URL environment variables',
       });
     }
 
-    const response = await apiClient.createChat(req.body);
+    const response = await agenticClient.createChat(req.body);
 
     res.json({
       success: true,
@@ -1602,13 +1602,13 @@ app.post('/api/chats', async (req, res) => {
 
 wss.on('connection', (ws) => {
   console.log('New WebSocket client connected');
-  connectedClients.add(ws);
+  wsClients.add(ws);
 
   // Send welcome message
   ws.send(JSON.stringify({
     type: 'connected',
     message: 'Connected to iMessage listener',
-    listening: isListening,
+    listening: listenerActive,
     timestamp: new Date().toISOString(),
   }));
 
@@ -1628,7 +1628,7 @@ wss.on('connection', (ws) => {
           return;
         }
 
-        if (!apiClient) {
+        if (!agenticClient) {
           ws.send(JSON.stringify({
             type: 'error',
             message: 'API client not initialized. Please configure API credentials.',
@@ -1637,7 +1637,7 @@ wss.on('connection', (ws) => {
         }
 
         try {
-          const response = await apiClient.createChatMessage(chatId, {
+          const response = await agenticClient.createChatMessage(chatId, {
             message: {
               text: messageText,
             },
@@ -1673,12 +1673,12 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     console.log('WebSocket client disconnected');
-    connectedClients.delete(ws);
+  wsClients.delete(ws);
   });
 
   ws.on('error', (error) => {
     console.error('WebSocket error:', error);
-    connectedClients.delete(ws);
+    wsClients.delete(ws);
   });
 });
 
@@ -1686,16 +1686,16 @@ wss.on('connection', (ws) => {
 process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down server...');
   
-  if (activeConsumer && isListening) {
+  if (kafkaConsumerHandle && listenerActive) {
     try {
-      await activeConsumer.stop();
+      await kafkaConsumerHandle.stop();
     } catch (error) {
       console.error('Error stopping consumer:', error);
     }
   }
 
   // Close all WebSocket connections
-  connectedClients.forEach((client) => {
+  wsClients.forEach((client) => {
     client.close();
   });
 

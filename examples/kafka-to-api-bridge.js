@@ -4,22 +4,22 @@ const AgenticAPIClient = require('../api/agentic-client');
 
 /**
  * Kafka to API Bridge
- * Consumes messages from Kafka and makes API calls based on the requests
+ * Consumes Kafka events and triggers API calls when requested
  */
 class KafkaToAPIBridge {
   constructor() {
-    this.consumer = new KafkaConsumer();
-    this.apiClient = null;
+    this.kafkaListener = new KafkaConsumer();
+    this.agenticClient = null;
   }
 
   async initialize() {
     // Initialize API client if we have the base URL
-    const apiBaseURL = process.env.AGENTIC_API_BASE_URL;
+    const apiBaseUrl = process.env.AGENTIC_API_BASE_URL;
     const apiKey = process.env.AGENTIC_API_KEY;
 
-    if (apiBaseURL && apiKey) {
-      this.apiClient = new AgenticAPIClient({
-        baseURL: apiBaseURL,
+    if (apiBaseUrl && apiKey) {
+      this.agenticClient = new AgenticAPIClient({
+        baseURL: apiBaseUrl,
         apiKey: apiKey,
       });
       console.log('✅ API client initialized');
@@ -29,12 +29,12 @@ class KafkaToAPIBridge {
     }
 
     // Register handler for API request events
-    this.consumer.onEvent('api.request', async (eventData) => {
-      await this.handleAPIRequest(eventData);
+    this.kafkaListener.onEvent('api.request', async (eventData) => {
+      await this.handleApiRequest(eventData);
     });
 
     // Also handle message.received events from Agentic
-    this.consumer.onEvent('message.received', async (eventData) => {
+    this.kafkaListener.onEvent('message.received', async (eventData) => {
       console.log('\n💬 Received message from Agentic:');
       const msg = eventData.data;
       console.log(`   From: ${msg.from_phone}`);
@@ -43,7 +43,7 @@ class KafkaToAPIBridge {
     });
   }
 
-  async handleAPIRequest(eventData) {
+  async handleApiRequest(eventData) {
     const { data } = eventData;
     const method = data.method;
     const endpoint = data.endpoint;
@@ -54,7 +54,7 @@ class KafkaToAPIBridge {
     console.log(`   Endpoint: ${endpoint}`);
     console.log(`   Query Params:`, queryParams);
 
-    if (!this.apiClient) {
+    if (!this.agenticClient) {
       console.log('   ⚠️  Cannot process - API client not initialized');
       return;
     }
@@ -64,7 +64,7 @@ class KafkaToAPIBridge {
 
       // Handle different API endpoints
       if (method === 'GET' && endpoint === '/api/chats') {
-        response = await this.apiClient.listChats({
+        response = await this.agenticClient.listChats({
           phoneNumber: queryParams.phone_number,
           page: queryParams.page || 1,
           perPage: queryParams.per_page || 25,
@@ -93,8 +93,8 @@ class KafkaToAPIBridge {
   async start() {
     try {
       await this.initialize();
-      await this.consumer.connect();
-      await this.consumer.start();
+      await this.kafkaListener.connect();
+      await this.kafkaListener.start();
 
       console.log('\n🚀 Kafka to API Bridge is running...');
       console.log('   Listening for API requests and Agentic messages');
@@ -103,18 +103,18 @@ class KafkaToAPIBridge {
       // Handle graceful shutdown
       process.on('SIGINT', async () => {
         console.log('\n\n🛑 Shutting down...');
-        await this.consumer.stop();
+        await this.kafkaListener.stop();
         process.exit(0);
       });
 
       process.on('SIGTERM', async () => {
         console.log('\n\n🛑 Shutting down...');
-        await this.consumer.stop();
+        await this.kafkaListener.stop();
         process.exit(0);
       });
     } catch (error) {
       console.error('\n❌ Error starting bridge:', error.message);
-      await this.consumer.stop().catch(() => {});
+      await this.kafkaListener.stop().catch(() => {});
       process.exit(1);
     }
   }

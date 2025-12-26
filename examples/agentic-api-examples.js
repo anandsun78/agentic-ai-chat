@@ -8,13 +8,13 @@ async function apiExamples() {
   // Initialize the API client
   // Credentials are loaded from environment variables:
   // AGENTIC_API_BASE_URL and AGENTIC_API_KEY
-  const client = new AgenticAPIClient();
+  const apiClient = new AgenticAPIClient();
 
   try {
     // ==================== Example 1: Create a Chat and Send Message ====================
     console.log('\n📱 Example 1: Creating a chat and sending initial message...');
     
-    const createChatPayload = {
+    const newChatPayload = {
       send_from: '+16463458837', // Your sender number
       chat: {
         phone_numbers: ['+19176256109'], // Recipient phone number
@@ -25,9 +25,9 @@ async function apiExamples() {
       },
     };
 
-    const chatResponse = await client.createChat(createChatPayload);
-    console.log('✅ Chat created:', chatResponse.data);
-    const chatId = chatResponse.data.id;
+    const chatCreateResp = await apiClient.createChat(newChatPayload);
+    console.log('✅ Chat created:', chatCreateResp.data);
+    const createdChatId = chatCreateResp.data.id;
 
     // ==================== Example 2: Send Additional Messages ====================
     console.log('\n📱 Example 2: Sending additional message to chat...');
@@ -38,13 +38,13 @@ async function apiExamples() {
       },
     };
 
-    const messageResponse = await client.createChatMessage(chatId, messagePayload);
+    const messageResponse = await apiClient.createChatMessage(createdChatId, messagePayload);
     console.log('✅ Message sent:', messageResponse.data);
 
     // ==================== Example 3: List Chats ====================
     console.log('\n📱 Example 3: Listing all chats...');
     
-    const chatsResponse = await client.listChats({
+    const chatsResponse = await apiClient.listChats({
       page: 1,
       perPage: 25,
     });
@@ -53,13 +53,13 @@ async function apiExamples() {
     // ==================== Example 4: Get Chat Details ====================
     console.log('\n📱 Example 4: Getting chat details...');
     
-    const chatDetails = await client.getChat(chatId);
+    const chatDetails = await apiClient.getChat(createdChatId);
     console.log('✅ Chat details:', chatDetails.data);
 
     // ==================== Example 5: List Messages in Chat ====================
     console.log('\n📱 Example 5: Listing messages in chat...');
     
-    const messagesResponse = await client.listChatMessages(chatId);
+    const messagesResponse = await apiClient.listChatMessages(createdChatId);
     console.log('✅ Messages:', messagesResponse.data);
 
     // ==================== Example 6: React to a Message ====================
@@ -72,25 +72,25 @@ async function apiExamples() {
         type: ReactionTypes.LIKE,
       };
 
-      const reactionResponse = await client.reactToMessage(firstMessage.id, reactionPayload);
+      const reactionResponse = await apiClient.reactToMessage(firstMessage.id, reactionPayload);
       console.log('✅ Reaction added:', reactionResponse.data);
     }
 
     // ==================== Example 7: Typing Indicators ====================
     console.log('\n📱 Example 7: Starting typing indicator...');
-    await client.startTyping(chatId);
+    await apiClient.startTyping(createdChatId);
     console.log('✅ Typing indicator started');
 
     // Wait a bit
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     console.log('\n📱 Stopping typing indicator...');
-    await client.stopTyping(chatId);
+    await apiClient.stopTyping(createdChatId);
     console.log('✅ Typing indicator stopped');
 
     // ==================== Example 8: Mark Chat as Read ====================
     console.log('\n📱 Example 8: Marking chat as read...');
-    await client.markChatAsRead(chatId);
+    await apiClient.markChatAsRead(createdChatId);
     console.log('✅ Chat marked as read');
 
     // ==================== Example 9: Edit a Message ====================
@@ -104,7 +104,7 @@ async function apiExamples() {
 
       // Note: Messages can only be edited within 15 minutes of creation
       try {
-        const editResponse = await client.editChatMessage(chatId, messageToEdit.id, editPayload);
+        const editResponse = await apiClient.editChatMessage(createdChatId, messageToEdit.id, editPayload);
         console.log('✅ Message edited:', editResponse.data);
       } catch (error) {
         console.log('⚠️  Could not edit message (may be outside 15-minute window):', error.message);
@@ -118,13 +118,13 @@ async function apiExamples() {
       phone_number: '+19176256109',
     };
 
-    const availabilityResponse = await client.checkIMessageAvailability(availabilityPayload);
+    const availabilityResponse = await apiClient.checkIMessageAvailability(availabilityPayload);
     console.log('✅ iMessage availability:', availabilityResponse.data);
 
     // ==================== Example 11: Find Chat ====================
     console.log('\n📱 Example 11: Finding chat by phone number...');
     
-    const findResponse = await client.findChat({
+    const findResponse = await apiClient.findChat({
       phoneNumber: '+19176256109',
     });
     console.log('✅ Found chat:', findResponse.data);

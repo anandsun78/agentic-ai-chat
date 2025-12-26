@@ -4,26 +4,25 @@ const readline = require('readline');
 
 /**
  * Listen for iMessage messages and allow sending replies
- * This creates an interactive terminal where you can see incoming messages
- * and type replies
- * 
+ * Creates an interactive terminal for inbound/outbound messages
+ *
  * Usage: node examples/listen-and-reply.js
  */
 async function listenAndReply() {
   // Use unique consumer group to avoid conflicts
   process.env.KAFKA_USE_UNIQUE_GROUP = 'true';
 
-  const consumer = new KafkaConsumer();
-  const apiClient = new AgenticAPIClient();
+  const kafkaListener = new KafkaConsumer();
+  const agenticClient = new AgenticAPIClient();
   
   // Create readline interface for user input
-  const rl = readline.createInterface({
+  const inputLoop = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
 
-  let currentChatId = null;
-  let currentFromPhone = null;
+  let activeChatId = null;
+  let activeFromPhone = null;
 
   console.log('🔊 Starting iMessage Listener with Reply Capability...');
   console.log('📱 Listening for messages on Kafka topic...\n');
@@ -33,36 +32,36 @@ async function listenAndReply() {
   console.log('='.repeat(60) + '\n');
 
   // Register handler for message.received events
-  consumer.onEvent('message.received', async (eventData) => {
-    const { data } = eventData;
+  kafkaListener.onEvent('message.received', async (eventPayload) => {
+    const { data: payload } = eventPayload;
     
-    currentChatId = data.chat_id;
-    currentFromPhone = data.from_phone;
+    activeChatId = payload.chat_id;
+    activeFromPhone = payload.from_phone;
     
     console.log('\n' + '='.repeat(60));
     console.log('📱 NEW iMESSAGE RECEIVED');
     console.log('='.repeat(60));
-    console.log(`📞 From: ${data.from_phone || 'Unknown'}`);
-    console.log(`💬 Message: ${data.text || '(no text)'}`);
-    console.log(`🆔 Chat ID: ${data.chat_id || 'Unknown'}`);
-    console.log(`📅 Sent At: ${data.sent_at || 'Unknown'}`);
+    console.log(`📞 From: ${payload.from_phone || 'Unknown'}`);
+    console.log(`💬 Message: ${payload.text || '(no text)'}`);
+    console.log(`🆔 Chat ID: ${payload.chat_id || 'Unknown'}`);
+    console.log(`📅 Sent At: ${payload.sent_at || 'Unknown'}`);
     console.log('='.repeat(60));
     console.log('\n💬 Type your reply (or "exit" to quit):');
   });
 
   // Register handler for typing indicators
-  consumer.onEvent('typing_indicator.received', async (eventData) => {
-    const { data } = eventData;
-    console.log(`\n⌨️  [TYPING] Chat ${data.chat_id || 'Unknown'} - Someone is typing...`);
+  kafkaListener.onEvent('typing_indicator.received', async (eventPayload) => {
+    const { data: payload } = eventPayload;
+    console.log(`\n⌨️  [TYPING] Chat ${payload.chat_id || 'Unknown'} - Someone is typing...`);
   });
 
-  consumer.onEvent('typing_indicator.removed', async (eventData) => {
-    const { data } = eventData;
-    console.log(`\n⌨️  [STOPPED] Chat ${data.chat_id || 'Unknown'} - Typing stopped`);
+  kafkaListener.onEvent('typing_indicator.removed', async (eventPayload) => {
+    const { data: payload } = eventPayload;
+    console.log(`\n⌨️  [STOPPED] Chat ${payload.chat_id || 'Unknown'} - Typing stopped`);
   });
 
   // Handle user input for replies
-  rl.on('line', async (input) => {
+  inputLoop.on('line', async (input) => {
     const message = input.trim();
 
     if (!message) {
@@ -71,20 +70,20 @@ async function listenAndReply() {
 
     if (message.toLowerCase() === 'exit' || message.toLowerCase() === 'quit') {
       console.log('\n🛑 Shutting down...');
-      await consumer.stop();
-      rl.close();
+      await kafkaListener.stop();
+      inputLoop.close();
       process.exit(0);
     }
 
-    if (!currentChatId) {
+    if (!activeChatId) {
       console.log('❌ No message received yet. Please wait for a message first.\n');
       return;
     }
 
     try {
-      console.log(`\n📤 Sending reply to chat ${currentChatId}...`);
+      console.log(`\n📤 Sending reply to chat ${activeChatId}...`);
       
-      const response = await apiClient.createChatMessage(currentChatId, {
+      const response = await agenticClient.createChatMessage(activeChatId, {
         message: {
           text: message,
         },
@@ -92,7 +91,7 @@ async function listenAndReply() {
 
       console.log('✅ Reply sent successfully!');
       console.log(`   Message ID: ${response.data.id}`);
-      console.log(`   Sent to: ${currentFromPhone || 'Unknown'}\n`);
+      console.log(`   Sent to: ${activeFromPhone || 'Unknown'}\n`);
       console.log('💬 Waiting for next message... (or type "exit" to quit)\n');
     } catch (error) {
       console.error('\n❌ Error sending reply:');
@@ -107,27 +106,27 @@ async function listenAndReply() {
 
   try {
     // Connect to Kafka
-    await consumer.connect();
+    await kafkaListener.connect();
     console.log('✅ Connected to Kafka cluster');
-    console.log(`📥 Listening on topic: ${consumer.topicName}`);
-    console.log(`👥 Consumer Group: ${consumer.consumerGroup}\n`);
+    console.log(`📥 Listening on topic: ${kafkaListener.topicName}`);
+    console.log(`👥 Consumer Group: ${kafkaListener.consumerGroup}\n`);
 
     // Start consuming messages
-    await consumer.start();
+    await kafkaListener.start();
 
     // Handle graceful shutdown
     process.on('SIGINT', async () => {
       console.log('\n\n🛑 Shutting down listener...');
-      await consumer.stop();
-      rl.close();
+      await kafkaListener.stop();
+      inputLoop.close();
       console.log('✅ Disconnected. Goodbye!');
       process.exit(0);
     });
 
     process.on('SIGTERM', async () => {
       console.log('\n\n🛑 Shutting down listener...');
-      await consumer.stop();
-      rl.close();
+      await kafkaListener.stop();
+      inputLoop.close();
       console.log('✅ Disconnected. Goodbye!');
       process.exit(0);
     });
@@ -139,8 +138,8 @@ async function listenAndReply() {
       console.error('\n💡 Tip: If you see protocol incompatibility errors,');
       console.error('   wait a few minutes or use a different consumer group.\n');
     }
-    rl.close();
-    await consumer.stop().catch(() => {});
+    inputLoop.close();
+    await kafkaListener.stop().catch(() => {});
     process.exit(1);
   }
 }
@@ -151,4 +150,3 @@ if (require.main === module) {
 }
 
 module.exports = listenAndReply;
-

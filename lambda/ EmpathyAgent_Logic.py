@@ -2,22 +2,22 @@ import json
 import boto3
 
 # Initialize the Bedrock Runtime Client
-bedrock = boto3.client(service_name='bedrock-runtime', region_name='us-east-1')
+bedrock_client = boto3.client(service_name='bedrock-runtime', region_name='us-east-1')
 
 def lambda_handler(event, context):
     try:
         # 1. Parse Incoming Data
-        # We expect the event to come from your local Bridge Script
-        incoming_text = event.get('message', '')
+        # Event is expected from the local bridge script
+        input_text = event.get('message', '')
         
-        if not incoming_text:
+        if not input_text:
             return {'statusCode': 400, 'body': 'No message provided'}
 
-        print(f"Analyzing message: {incoming_text}")
+        print(f"Analyzing message: {input_text}")
 
-        # 2. Define the Prompt (The "Empathy" Logic)
-        # We ask Claude to return strictly JSON so our code can parse it easily.
-        system_prompt = """
+        # 2. Define the Prompt (Empathy Logic)
+        # Ask Claude to return strict JSON for easy parsing.
+        coach_prompt = """
         You are an AI communication coach designed to make digital conversations more human.
         Analyze the input message.
         
@@ -37,18 +37,18 @@ def lambda_handler(event, context):
         }
         """
 
-        user_message = f"Message to analyze: \"{incoming_text}\""
+        user_prompt = f"Message to analyze: \"{input_text}\""
 
         # 3. Payload for Claude 3.5 Haiku
         # Note: 3.5 Haiku uses the Messages API format
-        body = json.dumps({
+        request_body = json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 300,
             "messages": [
                 {
                     "role": "user", 
                     "content": [
-                        {"type": "text", "text": system_prompt + "\n" + user_message}
+                        {"type": "text", "text": coach_prompt + "\n" + user_prompt}
                     ]
                 }
             ]
@@ -59,21 +59,21 @@ def lambda_handler(event, context):
         # If that fails, try the base ID: 'anthropic.claude-3-5-haiku-20241022-v1:0'
         model_id = 'us.anthropic.claude-3-5-haiku-20241022-v1:0'
         
-        response = bedrock.invoke_model(
+        model_response = bedrock_client.invoke_model(
             modelId=model_id,
-            body=body
+            body=request_body
         )
 
         # 5. Process Response
-        response_body = json.loads(response.get('body').read())
-        ai_text = response_body['content'][0]['text']
+        model_payload = json.loads(model_response.get('body').read())
+        model_text = model_payload['content'][0]['text']
         
-        print(f"AI Raw Output: {ai_text}")
+        print(f"AI Raw Output: {model_text}")
 
         # Return the AI's analysis to your Bridge Script
         return {
             'statusCode': 200,
-            'body': ai_text
+            'body': model_text
         }
 
     except Exception as e:

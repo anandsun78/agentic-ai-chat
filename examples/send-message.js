@@ -4,15 +4,15 @@ const KafkaProducer = require('../kafka/producer');
  * Example: Send a message to Kafka topic
  */
 async function sendMessage() {
-  const producer = new KafkaProducer();
+  const kafkaProducer = new KafkaProducer();
 
   try {
     // Connect to Kafka
-    await producer.connect();
+    await kafkaProducer.connect();
 
     // Example 1: Send a simple test message
     console.log('\n📤 Sending test message...');
-    const testMessage = {
+    const smokeMessage = {
       event: 'test_message',
       data: {
         message: 'Hello from Agentic AI Chat!',
@@ -21,11 +21,11 @@ async function sendMessage() {
       },
     };
 
-    await producer.sendMessage(testMessage);
+    await kafkaProducer.sendMessage(smokeMessage);
 
     // Example 2: Send a message that matches the Agentic API format
     console.log('\n📤 Sending Agentic API format message...');
-    const agenticMessage = {
+    const apiLikeMessage = {
       api_version: 'v2',
       created_at: new Date().toISOString(),
       data: {
@@ -39,26 +39,26 @@ async function sendMessage() {
       event_type: 'message.received',
     };
 
-    await producer.sendMessage(agenticMessage);
+    await kafkaProducer.sendMessage(apiLikeMessage);
 
     // Example 3: Send a batch of messages
     console.log('\n📤 Sending batch of messages...');
-    const batchMessages = [
+    const batchPayloads = [
       { event: 'batch_test_1', data: { message: 'Batch message 1' } },
       { event: 'batch_test_2', data: { message: 'Batch message 2' } },
       { event: 'batch_test_3', data: { message: 'Batch message 3' } },
     ];
 
-    await producer.sendBatch(batchMessages);
+    await kafkaProducer.sendBatch(batchPayloads);
 
     console.log('\n✅ All messages sent successfully!');
 
     // Disconnect
-    await producer.disconnect();
+    await kafkaProducer.disconnect();
     process.exit(0);
   } catch (error) {
     console.error('\n❌ Error:', error.message);
-    await producer.disconnect().catch(() => {});
+    await kafkaProducer.disconnect().catch(() => {});
     process.exit(1);
   }
 }
@@ -69,4 +69,3 @@ if (require.main === module) {
 }
 
 module.exports = sendMessage;
-

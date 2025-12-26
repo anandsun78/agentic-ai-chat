@@ -1,43 +1,43 @@
 /**
- * Agentic AI Chat Service API - Request/Response Schemas
- * Based on OpenAPI 3.0 specification
+ * Agentic AI Chat API - Request/Response shapes
+ * Mirrors the OpenAPI 3.0 contract
  */
 
 /**
- * Chat Message Attachment Schema
+ * Chat message attachment shape
  */
 const ChatMessageAttachment = {
   filename: String,      // Required
   mime_type: String,     // Required
-  data_base64: String,   // Required - base64 encoded file data (no data URI prefix)
+  data_base64: String,   // Required - base64 payload (no data URI prefix)
 };
 
 /**
- * Chat Messages Create Payload
+ * Create chat message payload
  */
 const ChatMessagesCreateJSONPayload = {
   message: {
-    text: String,        // Required, cannot be empty string
+    text: String,        // Required, must be non-empty
     attachments: [ChatMessageAttachment], // Optional
   },
 };
 
 /**
- * Chats Create Payload
+ * Create chat payload
  */
 const ChatsCreatePayload = {
-  send_from: String,     // Required - E.164 phone format
+  send_from: String,     // Required - E.164 format
   chat: {
-    phone_numbers: [String], // Required, min 1
+    phone_numbers: [String], // Required, minimum 1
     display_name: String,    // Optional
   },
   message: {
-    text: String,        // Required, cannot be empty string
+    text: String,        // Required, must be non-empty
   },
 };
 
 /**
- * Reaction Payload
+ * Reaction payload
  */
 const ReactionPayload = {
   operation: String,     // Required - enum: 'add' | 'remove'
@@ -45,14 +45,14 @@ const ReactionPayload = {
 };
 
 /**
- * iMessage Availability Check Payload
+ * iMessage availability check payload
  */
 const IMessageAvailabilityCheckPayload = {
-  phone_number: String,  // Required - phone number to check
+  phone_number: String,  // Required - number to check
 };
 
 /**
- * List Chats Query Parameters
+ * List chats query params
  */
 const ListChatsQueryParams = {
   phone_number: String,  // Optional - filter by participant phone (E.164)
@@ -61,7 +61,7 @@ const ListChatsQueryParams = {
 };
 
 /**
- * Find Chat Query Parameters
+ * Find chat query params
  */
 const FindChatQueryParams = {
   phone_number: String,  // Optional - primary phone
@@ -69,7 +69,7 @@ const FindChatQueryParams = {
 };
 
 /**
- * Reaction Types
+ * Reaction types
  */
 const ReactionTypes = {
   LOVE: 'love',
@@ -81,7 +81,7 @@ const ReactionTypes = {
 };
 
 /**
- * Reaction Operations
+ * Reaction operations
  */
 const ReactionOperations = {
   ADD: 'add',
@@ -99,4 +99,3 @@ module.exports = {
   ReactionTypes,
   ReactionOperations,
 };
-

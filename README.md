@@ -360,7 +360,7 @@ Kafka Consumer receives event
     ↓
 Save to Firebase (kafka_messages)
     ↓
-Trigger chatbot (processChatbotResponse)
+Trigger chatbot (handleChatbotReply)
     ↓
 Get user profile from Firebase
     ↓

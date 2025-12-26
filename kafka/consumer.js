@@ -1,8 +1,8 @@
 const { getKafkaInstance, getTopicName, getConsumerGroup, validateConfig } = require('./config');
 
 /**
- * Kafka Consumer for receiving messages from the topic
- * Handles message.received, typing_indicator.received, and typing_indicator.removed events
+ * Kafka consumer for inbound events
+ * Handles message.received, typing_indicator.received, and typing_indicator.removed
  */
 class KafkaConsumer {
   constructor() {
@@ -10,7 +10,7 @@ class KafkaConsumer {
     this.topicName = null;
     this.consumerGroup = null;
     this.isRunning = false;
-    this.messageHandlers = new Map();
+    this.eventHandlers = new Map();
   }
 
   /**
@@ -19,19 +19,16 @@ class KafkaConsumer {
   async connect() {
     try {
       validateConfig();
-      const kafka = getKafkaInstance();
+      const kafkaClient = getKafkaInstance();
       this.topicName = getTopicName();
       this.consumerGroup = getConsumerGroup();
       
-      // Create a unique client ID to avoid conflicts with other consumers
-      const uniqueClientId = `${process.env.KAFKA_CLIENT_ID || 'agentic-client'}-${Date.now()}`;
-      
-      this.consumer = kafka.consumer({
+      this.consumer = kafkaClient.consumer({
         groupId: this.consumerGroup,
         sessionTimeout: 30000,
         heartbeatInterval: 3000,
         maxInFlightRequests: 1,
-        rebalanceTimeout: 60000, // Increased rebalance timeout
+        rebalanceTimeout: 60000, // Extra time for rebalance
         retry: {
           initialRetryTime: 100,
           retries: 8,
@@ -80,7 +77,7 @@ class KafkaConsumer {
     if (typeof handler !== 'function') {
       throw new Error('Handler must be a function');
     }
-    this.messageHandlers.set(eventType, handler);
+    this.eventHandlers.set(eventType, handler);
     console.log(`📌 Registered handler for event: ${eventType}`);
   }
 
@@ -90,55 +87,55 @@ class KafkaConsumer {
    */
   async processMessage(message) {
     try {
-      const messageValue = message.value.toString();
-      let eventData;
+      const rawValue = message.value.toString();
+      let eventPayload;
 
       // Try to parse as JSON
       try {
-        eventData = JSON.parse(messageValue);
+        eventPayload = JSON.parse(rawValue);
       } catch (e) {
         // If not JSON, treat as plain text
-        eventData = {
+        eventPayload = {
           event_type: 'unknown',
-          data: { text: messageValue },
+          data: { text: rawValue },
         };
       }
 
-      const eventType = eventData.event_type || 'unknown';
-      const eventId = eventData.event_id || 'unknown';
-      const createdAt = eventData.created_at || new Date().toISOString();
+      const eventType = eventPayload.event_type || 'unknown';
+      const eventId = eventPayload.event_id || 'unknown';
+      const createdAt = eventPayload.created_at || new Date().toISOString();
 
       console.log(`\n📨 Received event: ${eventType}`);
       console.log(`   Event ID: ${eventId}`);
       console.log(`   Created At: ${createdAt}`);
 
       // Call registered handler if exists
-      const handler = this.messageHandlers.get(eventType);
-      if (handler) {
+      const eventHandler = this.eventHandlers.get(eventType);
+      if (eventHandler) {
         try {
-          await handler(eventData);
+          await eventHandler(eventPayload);
         } catch (handlerError) {
           console.error(`❌ Error in handler for ${eventType}:`, handlerError.message);
         }
       } else {
         // Default handler - just log the data
-        console.log('   Data:', JSON.stringify(eventData.data, null, 2));
+        console.log('   Data:', JSON.stringify(eventPayload.data, null, 2));
       }
 
       // Handle specific event types
       switch (eventType) {
         case 'message.received':
-          this.handleMessageReceived(eventData);
+          this.handleMessageReceived(eventPayload);
           break;
         case 'message.sent':
           // Handle messages we sent (for confirmation)
-          this.handleMessageReceived(eventData);
+          this.handleMessageReceived(eventPayload);
           break;
         case 'typing_indicator.received':
-          this.handleTypingIndicatorReceived(eventData);
+          this.handleTypingIndicatorReceived(eventPayload);
           break;
         case 'typing_indicator.removed':
-          this.handleTypingIndicatorRemoved(eventData);
+          this.handleTypingIndicatorRemoved(eventPayload);
           break;
         default:
           console.log(`   Unknown event type: ${eventType}`);
@@ -267,4 +264,3 @@ class KafkaConsumer {
 }
 
 module.exports = KafkaConsumer;
-

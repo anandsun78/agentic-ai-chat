@@ -1,21 +1,21 @@
 // Matching page JavaScript
-const API_BASE_URL = window.location.origin.includes('localhost') 
+const API_ORIGIN = window.location.origin.includes('localhost')
     ? 'http://localhost:8000' 
     : window.location.origin;
-const HASDATA_API_KEY = 'afab492a-a163-430e-98f3-15eb248e3453';
+const HASDATA_KEY = 'afab492a-a163-430e-98f3-15eb248e3453';
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🔵 Matching page loaded');
     
     // Get user data from sessionStorage
-    const phoneNumber = sessionStorage.getItem('phoneNumber');
-    const userDataStr = sessionStorage.getItem('userData');
+    const userPhone = sessionStorage.getItem('phoneNumber');
+    const storedUserData = sessionStorage.getItem('userData');
     
-    console.log('📱 SessionStorage check:', { phoneNumber, hasUserData: !!userDataStr });
+    console.log('📱 SessionStorage check:', { phoneNumber: userPhone, hasUserData: !!storedUserData });
     
-    if (!phoneNumber) {
-        console.warn('⚠️ No phone number found in sessionStorage');
-        console.warn('   This could mean:');
+    if (!userPhone) {
+      console.warn('⚠️ No phone number found in sessionStorage');
+      console.warn('   This could mean:');
         console.warn('   1. Sign-in was not completed');
         console.warn('   2. SessionStorage was cleared');
         console.warn('   3. Navigation happened before sign-in');
@@ -45,9 +45,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     let userData = null;
-    if (userDataStr) {
+    if (storedUserData) {
         try {
-            userData = JSON.parse(userDataStr);
+            userData = JSON.parse(storedUserData);
             console.log('✅ User data loaded:', userData);
         } catch (e) {
             console.error('Error parsing user data:', e);
@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Get additional user data from Firebase (RAG)
-    let enhancedUserData = await enhanceUserDataFromFirebase(userData, phoneNumber);
+    let enhancedUserData = await enhanceUserDataFromFirebase(userData, userPhone);
     
     // Update center avatar with user info
     updateCenterAvatar(enhancedUserData);
@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Find matches using enhanced data
     try {
         updateLoadingText('Analyzing your profile...');
-        const matches = await findMatches(enhancedUserData, phoneNumber);
+        const matches = await findMatches(enhancedUserData, userPhone);
         console.log('✅ Found matches:', matches);
         
         if (matches && matches.length > 0) {
@@ -81,7 +81,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-async function enhanceUserDataFromFirebase(userData, phoneNumber) {
+async function enhanceUserDataFromFirebase(userData, userPhone) {
     try {
         if (!window.firebase || !window.firebase.db) {
             console.warn('Firebase not initialized');
@@ -92,7 +92,7 @@ async function enhanceUserDataFromFirebase(userData, phoneNumber) {
         
         // Get user profile from Firebase
         const usersRef = collection(window.firebase.db, 'users');
-        const q = query(usersRef, where('phoneNumber', '==', phoneNumber));
+        const q = query(usersRef, where('phoneNumber', '==', userPhone));
         const querySnapshot = await getDocs(q);
 
         if (!querySnapshot.empty) {
@@ -120,14 +120,14 @@ function extractKeywords(text) {
     if (!text) return [];
     
     // Extract meaningful words (4+ characters, not common words)
-    const commonWords = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use'];
-    const words = text.toLowerCase()
+    const stopWords = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use'];
+    const tokens = text.toLowerCase()
         .replace(/[^\w\s]/g, ' ')
         .split(/\s+/)
-        .filter(word => word.length >= 4 && !commonWords.includes(word))
+        .filter(word => word.length >= 4 && !stopWords.includes(word))
         .slice(0, 10);
     
-    return [...new Set(words)]; // Remove duplicates
+    return [...new Set(tokens)]; // Remove duplicates
 }
 
 function updateCenterAvatar(userData) {
@@ -135,12 +135,12 @@ function updateCenterAvatar(userData) {
     if (!centerAvatar) return;
 
     if (userData && (userData.fullName || userData.firstName)) {
-        const name = userData.fullName || `${userData.firstName || ''} ${userData.lastName || ''}`.trim();
-        const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=120&background=007AFF&bold=true&color=fff&rounded=true`;
+        const displayName = userData.fullName || `${userData.firstName || ''} ${userData.lastName || ''}`.trim();
+        const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&size=120&background=007AFF&bold=true&color=fff&rounded=true`;
         
         const avatarImg = document.createElement('img');
         avatarImg.src = avatarUrl;
-        avatarImg.alt = name;
+        avatarImg.alt = displayName;
         avatarImg.style.cssText = 'width: 100%; height: 100%; object-fit: cover; border-radius: 50%;';
         avatarImg.onerror = function() {
             // Keep the SVG fallback
@@ -169,15 +169,15 @@ function getInitials(name) {
     return name.substring(0, 2).toUpperCase();
 }
 
-async function findMatches(userData, phoneNumber) {
-    console.log('🔍 Finding matches using Claude AI for:', { userData, phoneNumber });
+async function findMatches(userData, userPhone) {
+    console.log('🔍 Finding matches using Claude AI for:', { userData, phoneNumber: userPhone });
     
     try {
         updateLoadingText('Analyzing your profile with AI...');
         
         // Call backend API that uses Claude AI
-        const response = await axios.post(`${API_BASE_URL}/api/matching/find`, {
-            phoneNumber: phoneNumber
+        const apiResponse = await axios.post(`${API_ORIGIN}/api/matching/find`, {
+            phoneNumber: userPhone
         }, {
             headers: {
                 'Content-Type': 'application/json'
@@ -185,11 +185,11 @@ async function findMatches(userData, phoneNumber) {
             timeout: 60000 // 60 seconds for Claude AI processing
         });
 
-        console.log('✅ Claude AI matching response:', response.data);
+        console.log('✅ Claude AI matching response:', apiResponse.data);
         
-        if (response.data.success && response.data.matches) {
-            updateLoadingText(`Found ${response.data.matches.length} perfect matches!`);
-            return response.data.matches;
+        if (apiResponse.data.success && apiResponse.data.matches) {
+            updateLoadingText(`Found ${apiResponse.data.matches.length} perfect matches!`);
+            return apiResponse.data.matches;
         } else {
             throw new Error('No matches returned from API');
         }
@@ -198,102 +198,102 @@ async function findMatches(userData, phoneNumber) {
         
         // Fallback to basic search if Claude AI fails
         updateLoadingText('Using basic search...');
-        return await findMatchesBasic(userData, phoneNumber);
+        return await findMatchesBasic(userData, userPhone);
     }
 }
 
-async function findMatchesBasic(userData, phoneNumber) {
+async function findMatchesBasic(profileData, userPhone) {
     console.log('🔍 Using basic matching (fallback)');
     
     // Build multiple search queries for better matching
-    const searchQueries = buildSearchQueries(userData);
-    console.log('📝 Search queries:', searchQueries);
+    const queryPlan = buildSearchQueries(profileData);
+    console.log('📝 Search queries:', queryPlan);
 
-    const allMatches = [];
+    const collectedMatches = [];
     
     // Search with multiple queries to get more results
-    for (const query of searchQueries.slice(0, 3)) {
+    for (const searchQuery of queryPlan.slice(0, 3)) {
         try {
-            updateLoadingText(`Searching: ${query.substring(0, 50)}...`);
+            updateLoadingText(`Searching: ${searchQuery.substring(0, 50)}...`);
             
-            const response = await axios.get('https://api.hasdata.com/scrape/google/serp', {
+            const searchResponse = await axios.get('https://api.hasdata.com/scrape/google/serp', {
                 params: {
-                    q: query,
+                    q: searchQuery,
                     location: 'United States',
                     lr: [],
                     deviceType: 'desktop'
                 },
                 headers: {
-                    'x-api-key': HASDATA_API_KEY,
+                    'x-api-key': HASDATA_KEY,
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
                 timeout: 30000
             });
 
-            const data = response.data;
-            const matches = extractMatchesFromResponse(data);
+            const responseData = searchResponse.data;
+            const foundMatches = extractMatchesFromResponse(responseData);
             
             // Add matches to collection, avoiding duplicates
-            matches.forEach(match => {
-                if (!allMatches.find(m => m.link === match.link)) {
-                    allMatches.push(match);
+            foundMatches.forEach(match => {
+                if (!collectedMatches.find(m => m.link === match.link)) {
+                    collectedMatches.push(match);
                 }
             });
             
             // Small delay between requests
             await new Promise(resolve => setTimeout(resolve, 500));
         } catch (error) {
-            console.error('Error in search query:', query, error);
+            console.error('Error in search query:', searchQuery, error);
         }
     }
 
     // Score and rank matches
-    const scoredMatches = scoreMatches(allMatches, userData);
+    const rankedMatches = scoreMatches(collectedMatches, profileData);
     
     // Save matches to Firebase
-    if (scoredMatches.length > 0) {
-        await saveMatchesToFirebase(phoneNumber, userData, scoredMatches);
+    if (rankedMatches.length > 0) {
+        await saveMatchesToFirebase(userPhone, profileData, rankedMatches);
     }
 
-    return scoredMatches;
+    return rankedMatches;
 }
 
-function buildSearchQueries(userData) {
+function buildSearchQueries(profileData) {
     const queries = [];
     
     // Base LinkedIn search
     queries.push('linkedin professionals');
     
-    if (userData) {
+    if (profileData) {
         // Query 1: Name-based search
-        if (userData.fullName) {
-            queries.push(`linkedin ${userData.fullName}`);
-        } else if (userData.firstName && userData.lastName) {
-            queries.push(`linkedin ${userData.firstName} ${userData.lastName}`);
+        if (profileData.fullName) {
+            queries.push(`linkedin ${profileData.fullName}`);
+        } else if (profileData.firstName && profileData.lastName) {
+            queries.push(`linkedin ${profileData.firstName} ${profileData.lastName}`);
         }
         
         // Query 2: Bio keywords search
-        if (userData.keywords && userData.keywords.length > 0) {
-            const topKeywords = userData.keywords.slice(0, 3).join(' ');
+        if (profileData.keywords && profileData.keywords.length > 0) {
+            const topKeywords = profileData.keywords.slice(0, 3).join(' ');
             queries.push(`linkedin ${topKeywords}`);
         }
         
         // Query 3: Interests-based search
-        if (userData.interests && userData.interests.length > 0) {
-            const topInterests = userData.interests.slice(0, 2).join(' ');
+        if (profileData.interests && profileData.interests.length > 0) {
+            const topInterests = profileData.interests.slice(0, 2).join(' ');
             queries.push(`linkedin ${topInterests}`);
         }
         
         // Query 4: Skills-based search
-        if (userData.skills && userData.skills.length > 0) {
-            const topSkills = userData.skills.slice(0, 2).join(' ');
+        if (profileData.skills && profileData.skills.length > 0) {
+            const topSkills = profileData.skills.slice(0, 2).join(' ');
             queries.push(`linkedin ${topSkills}`);
         }
         
         // Query 5: Bio-based search
-        if (userData.bio) {
-            const bioWords = userData.bio.split(' ').filter(w => w.length > 4).slice(0, 3).join(' ');
+        if (profileData.bio) {
+            const bioWords = profileData.bio.split(' ').filter(w => w.length > 4).slice(0, 3).join(' ');
             if (bioWords) {
                 queries.push(`linkedin ${bioWords}`);
             }
@@ -304,24 +304,24 @@ function buildSearchQueries(userData) {
     return [...new Set(queries)];
 }
 
-function scoreMatches(matches, userData) {
-    if (!userData) return matches;
+function scoreMatches(candidates, profileData) {
+    if (!profileData) return candidates;
     
-    return matches.map(match => {
+    return candidates.map(match => {
         let score = 0;
         
         // Score based on title relevance
-        if (userData.fullName || userData.firstName) {
-            const name = (userData.fullName || `${userData.firstName} ${userData.lastName}`).toLowerCase();
+        if (profileData.fullName || profileData.firstName) {
+            const name = (profileData.fullName || `${profileData.firstName} ${profileData.lastName}`).toLowerCase();
             if (match.title.toLowerCase().includes(name.split(' ')[0])) {
                 score += 10;
             }
         }
         
         // Score based on keywords in snippet
-        if (userData.keywords && match.snippet) {
+        if (profileData.keywords && match.snippet) {
             const snippetLower = match.snippet.toLowerCase();
-            userData.keywords.forEach(keyword => {
+            profileData.keywords.forEach(keyword => {
                 if (snippetLower.includes(keyword.toLowerCase())) {
                     score += 5;
                 }
@@ -329,9 +329,9 @@ function scoreMatches(matches, userData) {
         }
         
         // Score based on interests
-        if (userData.interests && match.snippet) {
+        if (profileData.interests && match.snippet) {
             const snippetLower = match.snippet.toLowerCase();
-            userData.interests.forEach(interest => {
+            profileData.interests.forEach(interest => {
                 if (snippetLower.includes(interest.toLowerCase())) {
                     score += 3;
                 }
@@ -339,9 +339,9 @@ function scoreMatches(matches, userData) {
         }
         
         // Score based on skills
-        if (userData.skills && match.snippet) {
+        if (profileData.skills && match.snippet) {
             const snippetLower = match.snippet.toLowerCase();
-            userData.skills.forEach(skill => {
+            profileData.skills.forEach(skill => {
                 if (snippetLower.includes(skill.toLowerCase())) {
                     score += 3;
                 }
@@ -352,13 +352,13 @@ function scoreMatches(matches, userData) {
     }).sort((a, b) => b.score - a.score); // Sort by score descending
 }
 
-function ensureMinimumMatches(matches, userData) {
-    // If we have less than 5 matches, do additional searches
-    if (matches.length < 5) {
-        console.log(`⚠️ Only ${matches.length} matches found, need at least 5`);
+function ensureMinimumMatches(candidates, profileData) {
+    // If we have fewer than 5 matches, consider extra searches
+    if (candidates.length < 5) {
+        console.log(`⚠️ Only ${candidates.length} matches found, need at least 5`);
         
         // Try generic LinkedIn searches to fill up
-        const additionalQueries = [
+        const backupQueries = [
             'linkedin professionals network',
             'linkedin connections',
             'linkedin people',
@@ -370,61 +370,61 @@ function ensureMinimumMatches(matches, userData) {
     }
     
     // Return top 5-8 matches
-    return matches.slice(0, 8);
+    return candidates.slice(0, 8);
 }
 
-function extractMatchesFromResponse(data) {
-    const matches = [];
+function extractMatchesFromResponse(searchResult) {
+    const extracted = [];
     
     // Extract from organicResults
-    if (data?.organicResults && Array.isArray(data.organicResults)) {
-        data.organicResults.forEach((result, index) => {
-            if (result.link && result.link.includes('linkedin.com')) {
-                matches.push({
-                    title: result.title || 'LinkedIn Profile',
-                    link: result.link,
-                    snippet: result.snippet || '',
-                    thumbnail: result.thumbnail || null,
-                    position: result.position || index + 1
+    if (searchResult?.organicResults && Array.isArray(searchResult.organicResults)) {
+        searchResult.organicResults.forEach((entry, index) => {
+            if (entry.link && entry.link.includes('linkedin.com')) {
+                extracted.push({
+                    title: entry.title || 'LinkedIn Profile',
+                    link: entry.link,
+                    snippet: entry.snippet || '',
+                    thumbnail: entry.thumbnail || null,
+                    position: entry.position || index + 1
                 });
             }
         });
     }
     
     // Extract from organic_results (alternative format)
-    if (data?.organic_results && Array.isArray(data.organic_results)) {
-        data.organic_results.forEach((result, index) => {
-            if (result.link && result.link.includes('linkedin.com')) {
-                matches.push({
-                    title: result.title || 'LinkedIn Profile',
-                    link: result.link,
-                    snippet: result.snippet || '',
-                    thumbnail: result.thumbnail || null,
-                    position: result.position || index + 1
+    if (searchResult?.organic_results && Array.isArray(searchResult.organic_results)) {
+        searchResult.organic_results.forEach((entry, index) => {
+            if (entry.link && entry.link.includes('linkedin.com')) {
+                extracted.push({
+                    title: entry.title || 'LinkedIn Profile',
+                    link: entry.link,
+                    snippet: entry.snippet || '',
+                    thumbnail: entry.thumbnail || null,
+                    position: entry.position || index + 1
                 });
             }
         });
     }
     
     // Extract from inline_images if available
-    if (data?.inline_images && Array.isArray(data.inline_images)) {
-        data.inline_images.forEach((img, index) => {
-            if (img.link && img.link.includes('linkedin.com')) {
-                matches.push({
-                    title: img.title || 'LinkedIn Profile',
-                    link: img.link,
+    if (searchResult?.inline_images && Array.isArray(searchResult.inline_images)) {
+        searchResult.inline_images.forEach((imageItem, index) => {
+            if (imageItem.link && imageItem.link.includes('linkedin.com')) {
+                extracted.push({
+                    title: imageItem.title || 'LinkedIn Profile',
+                    link: imageItem.link,
                     snippet: '',
-                    thumbnail: img.thumbnail || img.thumbnail_link || null,
+                    thumbnail: imageItem.thumbnail || imageItem.thumbnail_link || null,
                     position: index + 1
                 });
             }
         });
     }
 
-    return matches;
+    return extracted;
 }
 
-async function saveMatchesToFirebase(phoneNumber, userData, matches) {
+async function saveMatchesToFirebase(userPhone, userData, matches) {
     try {
         if (!window.firebase || !window.firebase.db) {
             console.warn('Firebase not initialized');
@@ -434,7 +434,7 @@ async function saveMatchesToFirebase(phoneNumber, userData, matches) {
         const { collection, addDoc, serverTimestamp } = window.firebase;
         
         const matchData = {
-            phoneNumber: phoneNumber,
+            phoneNumber: userPhone,
             userData: userData,
             matches: matches,
             matchCount: matches.length,
@@ -488,7 +488,7 @@ function calculateOrbitsByScore(matches) {
     
     // Define orbit configuration
     // Inner orbits (1-3) are for highest scores, outer orbits (4-6) for lower scores
-    const orbitConfigs = [
+    const orbitLanes = [
         { orbitNumber: 1, baseRadius: 180, minScore: 90, maxPerOrbit: 4, duration: 20, direction: 'normal' },      // Inner - highest scores
         { orbitNumber: 2, baseRadius: 240, minScore: 80, maxPerOrbit: 5, duration: 25, direction: 'reverse' },    // Second ring
         { orbitNumber: 3, baseRadius: 300, minScore: 70, maxPerOrbit: 6, duration: 30, direction: 'normal' },      // Third ring
@@ -497,16 +497,16 @@ function calculateOrbitsByScore(matches) {
         { orbitNumber: 6, baseRadius: 480, minScore: 0, maxPerOrbit: 10, duration: 45, direction: 'reverse' }     // Outer - lowest scores
     ];
     
-    const assignments = [];
+    const orbitAssignments = [];
     const orbitCounts = {}; // Track how many avatars in each orbit
     
     matches.forEach((match, index) => {
         const score = match.score || 0;
         
         // Find appropriate orbit based on score
-        let selectedOrbit = orbitConfigs[orbitConfigs.length - 1]; // Default to outer orbit
+        let selectedOrbit = orbitLanes[orbitLanes.length - 1]; // Default to outer orbit
         
-        for (const orbitConfig of orbitConfigs) {
+        for (const orbitConfig of orbitLanes) {
             if (score >= orbitConfig.minScore) {
                 // Check if orbit has space
                 const currentCount = orbitCounts[orbitConfig.orbitNumber] || 0;
@@ -521,7 +521,7 @@ function calculateOrbitsByScore(matches) {
         const currentCount = orbitCounts[selectedOrbit.orbitNumber] || 0;
         if (currentCount >= selectedOrbit.maxPerOrbit) {
             // Find next orbit with space
-            for (const orbitConfig of orbitConfigs) {
+            for (const orbitConfig of orbitLanes) {
                 const count = orbitCounts[orbitConfig.orbitNumber] || 0;
                 if (count < orbitConfig.maxPerOrbit) {
                     selectedOrbit = orbitConfig;
@@ -537,7 +537,7 @@ function calculateOrbitsByScore(matches) {
         const avatarsInOrbit = orbitCounts[selectedOrbit.orbitNumber];
         const angle = (360 / avatarsInOrbit) * (avatarsInOrbit - 1);
         
-        assignments.push({
+        orbitAssignments.push({
             orbitNumber: selectedOrbit.orbitNumber,
             radius: selectedOrbit.baseRadius,
             angle: angle,
@@ -549,7 +549,7 @@ function calculateOrbitsByScore(matches) {
     
     // Recalculate angles for each orbit to distribute evenly
     const orbitGroups = {};
-    assignments.forEach((assignment, index) => {
+    orbitAssignments.forEach((assignment, index) => {
         const orbitNum = assignment.orbitNumber;
         if (!orbitGroups[orbitNum]) {
             orbitGroups[orbitNum] = [];
@@ -562,47 +562,47 @@ function calculateOrbitsByScore(matches) {
         const group = orbitGroups[orbitNum];
         group.forEach((item, idx) => {
             const angle = (360 / group.length) * idx;
-            assignments[item.index].angle = angle;
+            orbitAssignments[item.index].angle = angle;
         });
     });
     
-    return assignments;
+    return orbitAssignments;
 }
 
 function getOrCreateOrbit(container, orbitNumber, radius, duration, direction) {
-    let orbit = container.querySelector(`.orbit-${orbitNumber}`);
+    let orbitEl = container.querySelector(`.orbit-${orbitNumber}`);
     
-    if (!orbit) {
-        orbit = document.createElement('div');
-        orbit.className = `orbital-orbit orbit-${orbitNumber}`;
+    if (!orbitEl) {
+        orbitEl = document.createElement('div');
+        orbitEl.className = `orbital-orbit orbit-${orbitNumber}`;
         
         // Use provided radius, duration, and direction (from score-based calculation)
         const size = radius * 2; // Diameter
         
-        orbit.style.width = `${size}px`;
-        orbit.style.height = `${size}px`;
-        orbit.style.animation = `rotate ${duration}s linear infinite ${direction || (orbitNumber % 2 === 0 ? 'reverse' : 'normal')}`;
-        orbit.style.animationPlayState = 'running';
+        orbitEl.style.width = `${size}px`;
+        orbitEl.style.height = `${size}px`;
+        orbitEl.style.animation = `rotate ${duration}s linear infinite ${direction || (orbitNumber % 2 === 0 ? 'reverse' : 'normal')}`;
+        orbitEl.style.animationPlayState = 'running';
         
         // Add visual orbit path (optional - can be toggled)
-        orbit.setAttribute('data-orbit-number', orbitNumber);
-        orbit.setAttribute('data-radius', radius);
-        orbit.setAttribute('data-duration', duration);
-        orbit.setAttribute('data-direction', direction || (orbitNumber % 2 === 0 ? 'reverse' : 'normal'));
+        orbitEl.setAttribute('data-orbit-number', orbitNumber);
+        orbitEl.setAttribute('data-radius', radius);
+        orbitEl.setAttribute('data-duration', duration);
+        orbitEl.setAttribute('data-direction', direction || (orbitNumber % 2 === 0 ? 'reverse' : 'normal'));
         
-        container.appendChild(orbit);
+        container.appendChild(orbitEl);
     }
     
-    return orbit;
+    return orbitEl;
 }
 
 /**
  * Create a clean match card with AI avatar
  */
 function createMatchCard(match, index) {
-    const card = document.createElement('div');
-    card.className = 'match-card';
-    card.style.cssText = `
+    const cardEl = document.createElement('div');
+    cardEl.className = 'match-card';
+    cardEl.style.cssText = `
         position: relative;
         background: white;
         border-radius: 12px;
@@ -618,9 +618,9 @@ function createMatchCard(match, index) {
     const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=120&background=random&bold=true&color=fff`;
     
     // Avatar
-    const avatar = document.createElement('div');
-    avatar.className = 'match-avatar';
-    avatar.style.cssText = `
+    const avatarShell = document.createElement('div');
+    avatarShell.className = 'match-avatar';
+    avatarShell.style.cssText = `
         width: 120px;
         height: 120px;
         border-radius: 8px;
@@ -640,10 +640,10 @@ function createMatchCard(match, index) {
     avatarImg.onerror = function() {
         // Fallback to colored background with initials
         this.style.display = 'none';
-        avatar.style.background = match.avatarColor || '#007AFF';
-        avatar.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: white; font-size: 2rem; font-weight: 600;">${match.initials || name.substring(0, 2).toUpperCase()}</div>`;
+        avatarShell.style.background = match.avatarColor || '#007AFF';
+        avatarShell.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: white; font-size: 2rem; font-weight: 600;">${match.initials || name.substring(0, 2).toUpperCase()}</div>`;
     };
-    avatar.appendChild(avatarImg);
+    avatarShell.appendChild(avatarImg);
     
     // Name
     const nameEl = document.createElement('h3');
@@ -686,7 +686,7 @@ function createMatchCard(match, index) {
             display: block;
             width: fit-content;
         `;
-        card.appendChild(scoreEl);
+        cardEl.appendChild(scoreEl);
     }
     
     // Info panel (hidden by default, shown on hover/click)
@@ -736,10 +736,10 @@ function createMatchCard(match, index) {
     infoPanel.innerHTML = infoHTML;
     
     // Assemble card
-    card.appendChild(avatar);
-    card.appendChild(nameEl);
-    card.appendChild(titleEl);
-    card.appendChild(infoPanel);
+    cardEl.appendChild(avatarShell);
+    cardEl.appendChild(nameEl);
+    cardEl.appendChild(titleEl);
+    cardEl.appendChild(infoPanel);
     
     // Hover/Click handlers
     let isInfoVisible = false;
@@ -749,8 +749,8 @@ function createMatchCard(match, index) {
         infoPanel.style.opacity = '1';
         infoPanel.style.visibility = 'visible';
         infoPanel.style.transform = 'translateY(0)';
-        card.style.zIndex = '10';
-        card.style.boxShadow = '0 8px 24px rgba(0,0,0,0.15)';
+        cardEl.style.zIndex = '10';
+        cardEl.style.boxShadow = '0 8px 24px rgba(0,0,0,0.15)';
     };
     
     const hideInfo = () => {
@@ -758,13 +758,13 @@ function createMatchCard(match, index) {
         infoPanel.style.opacity = '0';
         infoPanel.style.visibility = 'hidden';
         infoPanel.style.transform = 'translateY(-10px)';
-        card.style.zIndex = '1';
-        card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+        cardEl.style.zIndex = '1';
+        cardEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
     };
     
-    card.addEventListener('mouseenter', showInfo);
-    card.addEventListener('mouseleave', hideInfo);
-    card.addEventListener('click', (e) => {
+    cardEl.addEventListener('mouseenter', showInfo);
+    cardEl.addEventListener('mouseleave', hideInfo);
+    cardEl.addEventListener('click', (e) => {
         if (e.target.tagName !== 'A') {
             if (isInfoVisible) {
                 hideInfo();
@@ -774,52 +774,52 @@ function createMatchCard(match, index) {
         }
     });
     
-    return card;
+    return cardEl;
 }
 
 /**
  * Create Apple-style floating avatar that opens Google search on click
  */
 function createFloatingAvatar(container, match, index, totalMatches) {
-    const avatar = document.createElement('div');
-    avatar.className = 'floating-avatar';
+    const avatarEl = document.createElement('div');
+    avatarEl.className = 'floating-avatar';
     
     // Generate AI avatar URL
     const name = match.name || 'User';
     const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=120&background=random&bold=true&color=fff&rounded=true`;
     
     // Calculate position for floating effect (Apple-style scattered around screen)
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
     
     // Avoid center area (where user avatar is)
-    const centerRadius = 120;
-    const minDistance = centerRadius + 100;
-    const maxDistance = Math.min(viewportWidth, viewportHeight) * 0.45;
+    const centerGuard = 120;
+    const minRadius = centerGuard + 100;
+    const maxRadius = Math.min(viewportW, viewportH) * 0.45;
     
     // Distribute avatars in a scattered circular pattern
-    const angle = (360 / totalMatches) * index + (Math.random() * 20 - 10); // Add slight randomness
-    const distance = minDistance + (Math.random() * (maxDistance - minDistance));
-    const x = Math.cos(angle * Math.PI / 180) * distance;
-    const y = Math.sin(angle * Math.PI / 180) * distance;
+    const angleDeg = (360 / totalMatches) * index + (Math.random() * 20 - 10); // Add slight randomness
+    const radius = minRadius + (Math.random() * (maxRadius - minRadius));
+    const offsetX = Math.cos(angleDeg * Math.PI / 180) * radius;
+    const offsetY = Math.sin(angleDeg * Math.PI / 180) * radius;
     
     // Center position (screen center)
-    const centerX = viewportWidth / 2;
-    const centerY = viewportHeight / 2;
+    const centerX = viewportW / 2;
+    const centerY = viewportH / 2;
     
     // Final position with bounds checking
-    let finalX = centerX + x;
-    let finalY = centerY + y;
+    let posX = centerX + offsetX;
+    let posY = centerY + offsetY;
     
     // Keep avatars within viewport bounds
-    finalX = Math.max(60, Math.min(viewportWidth - 60, finalX));
-    finalY = Math.max(100, Math.min(viewportHeight - 100, finalY));
+    posX = Math.max(60, Math.min(viewportW - 60, posX));
+    posY = Math.max(100, Math.min(viewportH - 100, posY));
     
     // Set initial position
-    avatar.style.cssText = `
+    avatarEl.style.cssText = `
         position: fixed;
-        left: ${finalX}px;
-        top: ${finalY}px;
+        left: ${posX}px;
+        top: ${posY}px;
         width: 80px;
         height: 80px;
         border-radius: 50%;
@@ -849,11 +849,11 @@ function createFloatingAvatar(container, match, index, totalMatches) {
     avatarImg.onerror = function() {
         const avatarColor = match.avatarColor || generateColorFromName(name);
         const initials = match.initials || getInitialsFromName(name);
-        avatar.style.background = `linear-gradient(135deg, ${avatarColor} 0%, ${darkenColor(avatarColor, 10)} 100%)`;
-        avatar.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: white; font-size: 1.5rem; font-weight: 600;">${initials}</div>`;
+        avatarEl.style.background = `linear-gradient(135deg, ${avatarColor} 0%, ${darkenColor(avatarColor, 10)} 100%)`;
+        avatarEl.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: white; font-size: 1.5rem; font-weight: 600;">${initials}</div>`;
     };
     
-    avatar.appendChild(avatarImg);
+    avatarEl.appendChild(avatarImg);
     
     // Score badge
     if (match.score) {
@@ -873,54 +873,54 @@ function createFloatingAvatar(container, match, index, totalMatches) {
             border: 2px solid white;
             z-index: 11;
         `;
-        avatar.appendChild(scoreBadge);
+        avatarEl.appendChild(scoreBadge);
     }
     
     // Floating animation
     const floatAnimation = () => {
         const randomX = (Math.random() - 0.5) * 20;
         const randomY = (Math.random() - 0.5) * 20;
-        avatar.style.transform = `translate(calc(-50% + ${randomX}px), calc(-50% + ${randomY}px))`;
+        avatarEl.style.transform = `translate(calc(-50% + ${randomX}px), calc(-50% + ${randomY}px))`;
     };
     
     // Animate on load
     setTimeout(() => {
-        avatar.style.opacity = '1';
-        avatar.style.transform = `translate(-50%, -50%) scale(1)`;
+        avatarEl.style.opacity = '1';
+        avatarEl.style.transform = `translate(-50%, -50%) scale(1)`;
     }, index * 100);
     
     // Continuous floating animation (subtle movement)
-    let floatInterval = setInterval(() => {
+    let floatTimer = setInterval(() => {
         const randomX = (Math.random() - 0.5) * 15;
         const randomY = (Math.random() - 0.5) * 15;
-        const currentX = parseFloat(avatar.style.left) || finalX;
-        const currentY = parseFloat(avatar.style.top) || finalY;
+        const currentX = parseFloat(avatarEl.style.left) || posX;
+        const currentY = parseFloat(avatarEl.style.top) || posY;
         
         // Smooth transition to new position
-        avatar.style.transition = 'transform 3s ease-in-out';
-        avatar.style.transform = `translate(calc(-50% + ${randomX}px), calc(-50% + ${randomY}px))`;
+        avatarEl.style.transition = 'transform 3s ease-in-out';
+        avatarEl.style.transform = `translate(calc(-50% + ${randomX}px), calc(-50% + ${randomY}px))`;
     }, 3000 + Math.random() * 2000);
     
     // Reset transform on hover
-    avatar.addEventListener('mouseenter', () => {
-        avatar.style.transition = 'transform 0.3s ease';
+    avatarEl.addEventListener('mouseenter', () => {
+        avatarEl.style.transition = 'transform 0.3s ease';
     });
     
     // Hover effect
-    avatar.addEventListener('mouseenter', () => {
-        avatar.style.transform = 'translate(-50%, -50%) scale(1.15)';
-        avatar.style.zIndex = '20';
-        avatar.style.boxShadow = '0 12px 32px rgba(0, 0, 0, 0.25)';
+    avatarEl.addEventListener('mouseenter', () => {
+        avatarEl.style.transform = 'translate(-50%, -50%) scale(1.15)';
+        avatarEl.style.zIndex = '20';
+        avatarEl.style.boxShadow = '0 12px 32px rgba(0, 0, 0, 0.25)';
     });
     
-    avatar.addEventListener('mouseleave', () => {
-        avatar.style.transform = 'translate(-50%, -50%) scale(1)';
-        avatar.style.zIndex = '10';
-        avatar.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.15)';
+    avatarEl.addEventListener('mouseleave', () => {
+        avatarEl.style.transform = 'translate(-50%, -50%) scale(1)';
+        avatarEl.style.zIndex = '10';
+        avatarEl.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.15)';
     });
     
     // Click handler - open Google search with person's info
-    avatar.addEventListener('click', () => {
+    avatarEl.addEventListener('click', () => {
         // Build search query with person's full info + LinkedIn
         const searchTerms = [];
         
@@ -941,41 +941,41 @@ function createFloatingAvatar(container, match, index, totalMatches) {
         window.open(googleSearchUrl, '_blank', 'noopener,noreferrer');
         
         // Show info panel briefly
-        showAvatarInfo(avatar, match);
+        showAvatarInfo(avatarEl, match);
     });
     
-    container.appendChild(avatar);
+    container.appendChild(avatarEl);
     
     // Store position data for resize handling
-    avatar.dataset.initialX = finalX;
-    avatar.dataset.initialY = finalY;
-    avatar.dataset.angle = angle;
-    avatar.dataset.distance = distance;
+    avatarEl.dataset.initialX = posX;
+    avatarEl.dataset.initialY = posY;
+    avatarEl.dataset.angle = angleDeg;
+    avatarEl.dataset.distance = radius;
 }
 
 // Handle window resize - reposition floating avatars
-let resizeTimeout;
+let resizeTimer;
 window.addEventListener('resize', () => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-        const avatars = document.querySelectorAll('.floating-avatar');
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        const centerX = viewportWidth / 2;
-        const centerY = viewportHeight / 2;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+        const avatarNodes = document.querySelectorAll('.floating-avatar');
+        const viewportW = window.innerWidth;
+        const viewportH = window.innerHeight;
+        const centerX = viewportW / 2;
+        const centerY = viewportH / 2;
         
-        avatars.forEach(avatar => {
-            const angle = parseFloat(avatar.dataset.angle) || 0;
-            const distance = parseFloat(avatar.dataset.distance) || 200;
-            const x = Math.cos(angle * Math.PI / 180) * distance;
-            const y = Math.sin(angle * Math.PI / 180) * distance;
+        avatarNodes.forEach(avatar => {
+            const angleDeg = parseFloat(avatar.dataset.angle) || 0;
+            const radius = parseFloat(avatar.dataset.distance) || 200;
+            const offsetX = Math.cos(angleDeg * Math.PI / 180) * radius;
+            const offsetY = Math.sin(angleDeg * Math.PI / 180) * radius;
             
-            let finalX = centerX + x;
-            let finalY = centerY + y;
+            let finalX = centerX + offsetX;
+            let finalY = centerY + offsetY;
             
             // Keep within bounds
-            finalX = Math.max(60, Math.min(viewportWidth - 60, finalX));
-            finalY = Math.max(100, Math.min(viewportHeight - 100, finalY));
+            finalX = Math.max(60, Math.min(viewportW - 60, finalX));
+            finalY = Math.max(100, Math.min(viewportH - 100, finalY));
             
             avatar.style.left = `${finalX}px`;
             avatar.style.top = `${finalY}px`;

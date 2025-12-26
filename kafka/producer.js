@@ -1,7 +1,7 @@
 const { getKafkaInstance, getTopicName, validateConfig } = require('./config');
 
 /**
- * Kafka Producer for sending messages to the topic
+ * Kafka producer for publishing messages
  */
 class KafkaProducer {
   constructor() {
@@ -15,9 +15,9 @@ class KafkaProducer {
   async connect() {
     try {
       validateConfig();
-      const kafka = getKafkaInstance();
+      const kafkaClient = getKafkaInstance();
       this.topicName = getTopicName();
-      this.producer = kafka.producer();
+      this.producer = kafkaClient.producer();
 
       await this.producer.connect();
       console.log('✅ Kafka producer connected successfully');
@@ -40,15 +40,15 @@ class KafkaProducer {
     }
 
     try {
-      const messageValue = typeof message === 'string' 
+      const payloadValue = typeof message === 'string'
         ? message 
         : JSON.stringify(message);
 
-      const record = {
+      const kafkaRecord = {
         topic: this.topicName,
         messages: [
           {
-            value: messageValue,
+            value: payloadValue,
             key: options.key || null,
             partition: options.partition || null,
             headers: options.headers || {},
@@ -57,25 +57,25 @@ class KafkaProducer {
         ],
       };
 
-      const result = await this.producer.send(record);
+      const sendResult = await this.producer.send(kafkaRecord);
       
       // Handle kafkajs response structure
-      if (result && Array.isArray(result) && result.length > 0) {
-        const metadata = result[0];
-        if (metadata && metadata.partitions && metadata.partitions.length > 0) {
+      if (sendResult && Array.isArray(sendResult) && sendResult.length > 0) {
+        const ackMetadata = sendResult[0];
+        if (ackMetadata && ackMetadata.partitions && ackMetadata.partitions.length > 0) {
           console.log('📤 Message sent successfully:');
-          console.log(`   Topic: ${metadata.topicName || metadata.topic}`);
-          console.log(`   Partition: ${metadata.partitions[0].partition}`);
-          console.log(`   Offset: ${metadata.partitions[0].offset}`);
+          console.log(`   Topic: ${ackMetadata.topicName || ackMetadata.topic}`);
+          console.log(`   Partition: ${ackMetadata.partitions[0].partition}`);
+          console.log(`   Offset: ${ackMetadata.partitions[0].offset}`);
         }
-        return metadata;
-      } else if (result) {
+        return ackMetadata;
+      } else if (sendResult) {
         // Handle different response structures
         console.log('📤 Message sent successfully');
-        return result;
+        return sendResult;
       }
 
-      return result;
+      return sendResult;
     } catch (error) {
       console.error('❌ Error sending message:', error.message);
       throw error;
@@ -93,20 +93,20 @@ class KafkaProducer {
     }
 
     try {
-      const formattedMessages = messages.map((msg) => ({
+      const batchItems = messages.map((msg) => ({
         value: typeof msg === 'string' ? msg : JSON.stringify(msg),
         key: msg.key || null,
         partition: msg.partition || null,
         headers: msg.headers || {},
       }));
 
-      const result = await this.producer.send({
+      const sendResult = await this.producer.send({
         topic: this.topicName,
-        messages: formattedMessages,
+        messages: batchItems,
       });
 
       console.log(`📤 Batch of ${messages.length} messages sent successfully`);
-      return result;
+      return sendResult;
     } catch (error) {
       console.error('❌ Error sending batch:', error.message);
       throw error;
@@ -130,4 +130,3 @@ class KafkaProducer {
 }
 
 module.exports = KafkaProducer;
-

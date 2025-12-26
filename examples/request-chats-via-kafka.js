@@ -2,26 +2,26 @@ require('dotenv').config();
 const KafkaProducer = require('../kafka/producer');
 
 /**
- * Send a request message to Kafka asking for GET /api/chats
- * This message can be consumed by a service that will make the actual API call
+ * Send a Kafka request asking for GET /api/chats
+ * Downstream service should perform the actual API call
  */
 async function requestChatsViaKafka() {
-  const producer = new KafkaProducer();
-  const phoneNumber = process.argv[2] || '5713659116';
+  const kafkaProducer = new KafkaProducer();
+  const rawPhone = process.argv[2] || '5713659116';
 
   try {
     // Format phone number to E.164
-    const formattedPhone = phoneNumber.startsWith('+') 
-      ? phoneNumber 
-      : `+1${phoneNumber}`;
+    const e164Phone = rawPhone.startsWith('+')
+      ? rawPhone
+      : `+1${rawPhone}`;
 
-    console.log(`📤 Sending Kafka message to request chats for: ${formattedPhone}\n`);
+    console.log(`📤 Sending Kafka message to request chats for: ${e164Phone}\n`);
 
     // Connect to Kafka
-    await producer.connect();
+    await kafkaProducer.connect();
 
     // Create a message requesting the API call
-    const requestMessage = {
+    const kafkaRequest = {
       api_version: 'v2',
       created_at: new Date().toISOString(),
       event_type: 'api.request',
@@ -30,7 +30,7 @@ async function requestChatsViaKafka() {
         method: 'GET',
         endpoint: '/api/chats',
         query_params: {
-          phone_number: formattedPhone,
+          phone_number: e164Phone,
         },
         request_id: `req-${Date.now()}`,
         timestamp: new Date().toISOString(),
@@ -38,30 +38,30 @@ async function requestChatsViaKafka() {
     };
 
     // Send the request message to Kafka
-    const result = await producer.sendMessage(requestMessage);
+    const sendResult = await kafkaProducer.sendMessage(kafkaRequest);
 
     console.log('✅ Request message sent to Kafka successfully!');
     console.log(`\n📋 Message Details:`);
-    if (result) {
-      if (result.topicName || result.topic) {
-        console.log(`   Topic: ${result.topicName || result.topic}`);
+    if (sendResult) {
+      if (sendResult.topicName || sendResult.topic) {
+        console.log(`   Topic: ${sendResult.topicName || sendResult.topic}`);
       }
-      if (result.partitions && result.partitions.length > 0) {
-        console.log(`   Partition: ${result.partitions[0].partition}`);
-        console.log(`   Offset: ${result.partitions[0].offset}`);
+      if (sendResult.partitions && sendResult.partitions.length > 0) {
+        console.log(`   Partition: ${sendResult.partitions[0].partition}`);
+        console.log(`   Offset: ${sendResult.partitions[0].offset}`);
       }
     }
     console.log(`\n📨 Request Payload:`);
-    console.log(JSON.stringify(requestMessage, null, 2));
+    console.log(JSON.stringify(kafkaRequest, null, 2));
     console.log(`\n💡 This message can be consumed by a service that will make the API call to GET /api/chats`);
 
     // Disconnect
-    await producer.disconnect();
+    await kafkaProducer.disconnect();
     process.exit(0);
 
   } catch (error) {
     console.error('\n❌ Error:', error.message);
-    await producer.disconnect().catch(() => {});
+    await kafkaProducer.disconnect().catch(() => {});
     process.exit(1);
   }
 }
@@ -72,4 +72,3 @@ if (require.main === module) {
 }
 
 module.exports = requestChatsViaKafka;
-

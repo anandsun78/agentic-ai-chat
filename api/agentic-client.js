@@ -3,77 +3,77 @@ const https = require('https');
 const http = require('http');
 
 /**
- * Agentic AI Chat Service API Client
- * Complete implementation of all API endpoints
+ * Agentic AI Chat API client
+ * Wraps all supported endpoints
  */
 class AgenticAPIClient {
   constructor(options = {}) {
-    this.baseURL = options.baseURL || process.env.AGENTIC_API_BASE_URL || '';
-    this.apiKey = options.apiKey || process.env.AGENTIC_API_KEY || '';
+    this.apiBaseUrl = options.baseURL || process.env.AGENTIC_API_BASE_URL || '';
+    this.apiToken = options.apiKey || process.env.AGENTIC_API_KEY || '';
     
-    if (!this.baseURL) {
+    if (!this.apiBaseUrl) {
       throw new Error('API base URL is required. Set AGENTIC_API_BASE_URL environment variable or pass it in options.');
     }
     
-    if (!this.apiKey) {
+    if (!this.apiToken) {
       throw new Error('API key is required. Set AGENTIC_API_KEY environment variable or pass it in options.');
     }
   }
 
   /**
-   * Make HTTP request to API
+   * Make an HTTP request to the API
    * @private
    */
   async request(method, path, data = null, options = {}) {
-    const url = new URL(path, this.baseURL);
+    const requestUrl = new URL(path, this.apiBaseUrl);
     
-    // Add query parameters if provided
+    // Add query params when provided
     if (options.queryParams) {
       Object.entries(options.queryParams).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           if (Array.isArray(value)) {
-            value.forEach(v => url.searchParams.append(key, v));
+            value.forEach(v => requestUrl.searchParams.append(key, v));
           } else {
-            url.searchParams.append(key, value);
+            requestUrl.searchParams.append(key, value);
           }
         }
       });
     }
 
-    const requestOptions = {
+    const requestConfig = {
       method,
       headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
+        'Authorization': `Bearer ${this.apiToken}`,
         'Content-Type': 'application/json',
         ...options.headers,
       },
     };
 
     return new Promise((resolve, reject) => {
-      const client = url.protocol === 'https:' ? https : http;
+      const transport = requestUrl.protocol === 'https:' ? https : http;
       
-      const req = client.request(url, requestOptions, (res) => {
-        let body = '';
+      const req = transport.request(requestUrl, requestConfig, (res) => {
+        let rawBody = '';
         
         res.on('data', (chunk) => {
-          body += chunk;
+          rawBody += chunk;
         });
         
         res.on('end', () => {
           try {
-            const parsedBody = body ? JSON.parse(body) : null;
+            const payload = rawBody ? JSON.parse(rawBody) : null;
             
             if (res.statusCode >= 200 && res.statusCode < 300) {
               resolve({
                 status: res.statusCode,
-                data: parsedBody,
+                data: payload,
                 headers: res.headers,
               });
             } else {
               reject({
                 status: res.statusCode,
-                message: parsedBody?.message || parsedBody?.error || `HTTP ${res.statusCode}`,
-                data: parsedBody,
+                message: payload?.message || payload?.error || `HTTP ${res.statusCode}`,
+                data: payload,
               });
             }
           } catch (error) {

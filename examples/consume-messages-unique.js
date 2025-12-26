@@ -2,8 +2,8 @@ const KafkaConsumer = require('../kafka/consumer');
 
 /**
  * Example: Consume messages with a unique consumer group
- * This avoids protocol incompatibility issues when other consumers are active
- * 
+ * Helps avoid protocol incompatibility with other consumers
+ *
  * Usage: KAFKA_USE_UNIQUE_GROUP=true node examples/consume-messages-unique.js
  */
 async function consumeMessages() {
@@ -12,53 +12,53 @@ async function consumeMessages() {
     process.env.KAFKA_USE_UNIQUE_GROUP = 'true';
   }
 
-  const consumer = new KafkaConsumer();
+  const kafkaListener = new KafkaConsumer();
 
   // Register custom handlers for specific event types
-  consumer.onEvent('message.received', async (eventData) => {
-    const { data } = eventData;
+  kafkaListener.onEvent('message.received', async (eventPayload) => {
+    const { data: payload } = eventPayload;
     console.log('\n📱 ===== NEW iMESSAGE RECEIVED =====');
-    console.log(`   From: ${data.from_phone || 'Unknown'}`);
-    console.log(`   Chat ID: ${data.chat_id || 'Unknown'}`);
-    console.log(`   Message: ${data.text || '(no text)'}`);
-    console.log(`   Sent At: ${data.sent_at || 'Unknown'}`);
-    console.log(`   Service: ${data.service || 'Unknown'}`);
-    if (data.chat_handles && data.chat_handles.length > 0) {
-      console.log(`   Participants: ${data.chat_handles.map(h => h.display_name || h.identifier).join(', ')}`);
+    console.log(`   From: ${payload.from_phone || 'Unknown'}`);
+    console.log(`   Chat ID: ${payload.chat_id || 'Unknown'}`);
+    console.log(`   Message: ${payload.text || '(no text)'}`);
+    console.log(`   Sent At: ${payload.sent_at || 'Unknown'}`);
+    console.log(`   Service: ${payload.service || 'Unknown'}`);
+    if (payload.chat_handles && payload.chat_handles.length > 0) {
+      console.log(`   Participants: ${payload.chat_handles.map(h => h.display_name || h.identifier).join(', ')}`);
     }
-    if (data.attachments && data.attachments.length > 0) {
-      console.log(`   Attachments: ${data.attachments.length} file(s)`);
+    if (payload.attachments && payload.attachments.length > 0) {
+      console.log(`   Attachments: ${payload.attachments.length} file(s)`);
     }
     console.log('=====================================\n');
   });
 
-  consumer.onEvent('typing_indicator.received', async (eventData) => {
-    const { data } = eventData;
-    console.log(`\n⌨️  [TYPING] Chat ${data.chat_id || 'Unknown'} - Someone is typing...`);
+  kafkaListener.onEvent('typing_indicator.received', async (eventPayload) => {
+    const { data: payload } = eventPayload;
+    console.log(`\n⌨️  [TYPING] Chat ${payload.chat_id || 'Unknown'} - Someone is typing...`);
   });
 
-  consumer.onEvent('typing_indicator.removed', async (eventData) => {
-    const { data } = eventData;
-    console.log(`\n⌨️  [STOPPED TYPING] Chat ${data.chat_id || 'Unknown'}`);
+  kafkaListener.onEvent('typing_indicator.removed', async (eventPayload) => {
+    const { data: payload } = eventPayload;
+    console.log(`\n⌨️  [STOPPED TYPING] Chat ${payload.chat_id || 'Unknown'}`);
   });
 
   try {
     // Connect to Kafka
-    await consumer.connect();
+    await kafkaListener.connect();
 
     // Start consuming messages
-    await consumer.start();
+    await kafkaListener.start();
 
     // Handle graceful shutdown
     process.on('SIGINT', async () => {
       console.log('\n\n🛑 Shutting down consumer...');
-      await consumer.stop();
+      await kafkaListener.stop();
       process.exit(0);
     });
 
     process.on('SIGTERM', async () => {
       console.log('\n\n🛑 Shutting down consumer...');
-      await consumer.stop();
+      await kafkaListener.stop();
       process.exit(0);
     });
 
@@ -66,7 +66,7 @@ async function consumeMessages() {
     console.log('\n💡 Press Ctrl+C to stop the consumer\n');
   } catch (error) {
     console.error('\n❌ Error:', error.message);
-    await consumer.stop().catch(() => {});
+    await kafkaListener.stop().catch(() => {});
     process.exit(1);
   }
 }
@@ -77,4 +77,3 @@ if (require.main === module) {
 }
 
 module.exports = consumeMessages;
-

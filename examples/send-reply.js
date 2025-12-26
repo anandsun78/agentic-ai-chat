@@ -7,25 +7,25 @@ const readline = require('readline');
  * Or run interactively: node examples/send-reply.js
  */
 async function sendReply(chatId, messageText) {
-  const client = new AgenticAPIClient();
+  const apiClient = new AgenticAPIClient();
 
   try {
     console.log(`\n📤 Sending reply to chat ${chatId}...`);
     console.log(`💬 Message: ${messageText}\n`);
 
-    const response = await client.createChatMessage(chatId, {
+    const apiResponse = await apiClient.createChatMessage(chatId, {
       message: {
         text: messageText,
       },
     });
 
     console.log('✅ Message sent successfully!');
-    console.log(`   Message ID: ${response.data.id}`);
-    console.log(`   Chat ID: ${response.data.chat_id}`);
-    console.log(`   Text: ${response.data.text}`);
-    console.log(`   Sent At: ${response.data.sent_at}\n`);
+    console.log(`   Message ID: ${apiResponse.data.id}`);
+    console.log(`   Chat ID: ${apiResponse.data.chat_id}`);
+    console.log(`   Text: ${apiResponse.data.text}`);
+    console.log(`   Sent At: ${apiResponse.data.sent_at}\n`);
 
-    return response.data;
+    return apiResponse.data;
   } catch (error) {
     console.error('\n❌ Error sending message:');
     console.error(`   Status: ${error.status}`);
@@ -39,12 +39,12 @@ async function sendReply(chatId, messageText) {
 
 // If run from command line with arguments
 if (require.main === module) {
-  const args = process.argv.slice(2);
+  const cliArgs = process.argv.slice(2);
 
-  if (args.length >= 2) {
+  if (cliArgs.length >= 2) {
     // Command line mode: node send-reply.js <chat_id> <message>
-    const chatId = args[0];
-    const messageText = args.slice(1).join(' ');
+    const chatId = cliArgs[0];
+    const messageText = cliArgs.slice(1).join(' ');
     sendReply(chatId, messageText)
       .then(() => process.exit(0))
       .catch(() => process.exit(1));
@@ -87,4 +87,3 @@ if (require.main === module) {
 }
 
 module.exports = sendReply;
-

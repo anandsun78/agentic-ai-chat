@@ -2,8 +2,8 @@ require('dotenv').config();
 const { Kafka } = require('kafkajs');
 
 /**
- * Kafka Configuration for Confluent Cloud
- * All credentials are loaded from environment variables
+ * Kafka config for Confluent Cloud
+ * Values are sourced from environment variables
  */
 const kafkaConfig = {
   clientId: process.env.KAFKA_CLIENT_ID || 'agentic-client',
@@ -22,7 +22,7 @@ const kafkaConfig = {
   },
 };
 
-// Validate required environment variables
+// Required environment variables
 const requiredEnvVars = [
   'KAFKA_BOOTSTRAP_SERVERS',
   'KAFKA_SASL_USERNAME',
@@ -32,9 +32,7 @@ const requiredEnvVars = [
 ];
 
 function validateConfig() {
-  const missing = requiredEnvVars.filter(
-    (varName) => !process.env[varName]
-  );
+  const missing = requiredEnvVars.filter((envName) => !process.env[envName]);
 
   if (missing.length > 0) {
     throw new Error(
@@ -44,7 +42,7 @@ function validateConfig() {
   }
 }
 
-// Create Kafka instance
+// Singleton Kafka instance
 let kafkaInstance = null;
 
 function getKafkaInstance() {
@@ -55,7 +53,7 @@ function getKafkaInstance() {
   return kafkaInstance;
 }
 
-// Export configuration and helper functions
+// Export config + helpers
 module.exports = {
   kafkaConfig,
   getKafkaInstance,
@@ -70,4 +68,3 @@ module.exports = {
   },
   getClientId: () => process.env.KAFKA_CLIENT_ID || kafkaConfig.clientId,
 };
-

@@ -1,6 +1,6 @@
 // Smooth scroll for anchor links
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
+document.querySelectorAll('a[href^="#"]').forEach(link => {
+    link.addEventListener('click', function (e) {
         e.preventDefault();
         const target = document.querySelector(this.getAttribute('href'));
         if (target) {
@@ -13,52 +13,52 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 });
 
 // Intersection Observer for fade-in animations
-const observerOptions = {
+const revealOptions = {
     threshold: 0.1,
     rootMargin: '0px 0px -50px 0px'
 };
 
-const observer = new IntersectionObserver((entries) => {
+const revealObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
         if (entry.isIntersecting) {
             entry.target.style.opacity = '1';
             entry.target.style.transform = 'translateY(0)';
         }
     });
-}, observerOptions);
+}, revealOptions);
 
 // Observe hero section for animations
 document.addEventListener('DOMContentLoaded', () => {
-    const heroSection = document.querySelector('.hero');
+    const heroEl = document.querySelector('.hero');
     
-    if (heroSection) {
-        heroSection.style.opacity = '0';
-        heroSection.style.transform = 'translateY(30px)';
-        heroSection.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+    if (heroEl) {
+        heroEl.style.opacity = '0';
+        heroEl.style.transform = 'translateY(30px)';
+        heroEl.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
         
         setTimeout(() => {
-            heroSection.style.opacity = '1';
-            heroSection.style.transform = 'translateY(0)';
+            heroEl.style.opacity = '1';
+            heroEl.style.transform = 'translateY(0)';
         }, 100);
     }
 });
 
 // Navbar background on scroll
-let lastScroll = 0;
-const navbar = document.querySelector('.navbar');
+let lastScrollY = 0;
+const navBarEl = document.querySelector('.navbar');
 
 window.addEventListener('scroll', () => {
     const currentScroll = window.pageYOffset;
     
     if (currentScroll > 50) {
-        navbar.style.background = 'rgba(251, 251, 253, 0.95)';
-        navbar.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+        navBarEl.style.background = 'rgba(251, 251, 253, 0.95)';
+        navBarEl.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
     } else {
-        navbar.style.background = 'rgba(251, 251, 253, 0.8)';
-        navbar.style.boxShadow = 'none';
+        navBarEl.style.background = 'rgba(251, 251, 253, 0.8)';
+        navBarEl.style.boxShadow = 'none';
     }
     
-    lastScroll = currentScroll;
+    lastScrollY = currentScroll;
 });
 
 // Button click handlers - moved to DOMContentLoaded to ensure proper initialization
@@ -66,29 +66,29 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.btn-primary, .btn-secondary, .nav-button').forEach(button => {
         button.addEventListener('click', function(e) {
             // Create ripple effect
-            const ripple = document.createElement('span');
-            const rect = this.getBoundingClientRect();
-            const size = Math.max(rect.width, rect.height);
-            const x = e.clientX - rect.left - size / 2;
-            const y = e.clientY - rect.top - size / 2;
+            const rippleEl = document.createElement('span');
+            const bounds = this.getBoundingClientRect();
+            const rippleSize = Math.max(bounds.width, bounds.height);
+            const offsetX = e.clientX - bounds.left - rippleSize / 2;
+            const offsetY = e.clientY - bounds.top - rippleSize / 2;
             
-            ripple.style.width = ripple.style.height = size + 'px';
-            ripple.style.left = x + 'px';
-            ripple.style.top = y + 'px';
-            ripple.classList.add('ripple');
+            rippleEl.style.width = rippleEl.style.height = rippleSize + 'px';
+            rippleEl.style.left = offsetX + 'px';
+            rippleEl.style.top = offsetY + 'px';
+            rippleEl.classList.add('ripple');
             
-            this.appendChild(ripple);
+            this.appendChild(rippleEl);
             
             setTimeout(() => {
-                ripple.remove();
+                rippleEl.remove();
             }, 600);
         });
     });
 });
 
 // Add ripple effect styles dynamically
-const style = document.createElement('style');
-style.textContent = `
+const rippleStyle = document.createElement('style');
+rippleStyle.textContent = `
     .btn-primary, .btn-secondary, .nav-button {
         position: relative;
         overflow: hidden;
@@ -110,21 +110,21 @@ style.textContent = `
         }
     }
 `;
-document.head.appendChild(style);
+document.head.appendChild(rippleStyle);
 
 // Parallax effect for hero visual
 window.addEventListener('scroll', () => {
     const scrolled = window.pageYOffset;
-    const heroVisual = document.querySelector('.hero-visual');
+    const heroArt = document.querySelector('.hero-visual');
     
-    if (heroVisual && scrolled < window.innerHeight) {
+    if (heroArt && scrolled < window.innerHeight) {
         const parallax = scrolled * 0.3;
-        heroVisual.style.transform = `translateY(${parallax}px)`;
+        heroArt.style.transform = `translateY(${parallax}px)`;
     }
 });
 
 // Smooth reveal animation for sections
-const sectionObserver = new IntersectionObserver((entries) => {
+const sectionReveal = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
         if (entry.isIntersecting) {
             entry.target.classList.add('revealed');
@@ -135,7 +135,7 @@ const sectionObserver = new IntersectionObserver((entries) => {
 });
 
 document.querySelectorAll('section').forEach(section => {
-    sectionObserver.observe(section);
+    sectionReveal.observe(section);
 });
 
 // Search Modal Functionality

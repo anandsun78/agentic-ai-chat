@@ -101,7 +101,7 @@ Incoming message via Kafka
     ↓
 Save to Firebase (kafka_messages)
     ↓
-Trigger chatbot (processChatbotResponse)
+Trigger chatbot (handleChatbotReply)
     ↓
 Get user profile from Firebase
     ↓
@@ -355,7 +355,7 @@ Kafka Consumer (server.js)
     ↓
 Save to Firebase (kafka_messages)
     ↓
-Trigger Chatbot (processChatbotResponse)
+Trigger Chatbot (handleChatbotReply)
     ↓
 Get User Profile (Firebase users collection)
     ↓

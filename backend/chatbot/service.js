@@ -3,15 +3,15 @@ const admin = require('firebase-admin');
 
 class SocialNetworkAgent {
   constructor() {
-    this.claude = new Anthropic({
+    this.llmClient = new Anthropic({
       apiKey: process.env.CLAUDE_API_KEY || '',
     });
     
     if (!process.env.CLAUDE_API_KEY) {
       console.warn('⚠️  CLAUDE_API_KEY not set in environment variables');
     }
-    // Using Claude 3 Haiku model (working model for this API key)
-    // Note: Claude 3.5 Sonnet models are not available with this API key
+    // Default to the smaller Claude model allowed for this key.
+    // Higher tier models are not enabled for this account.
     this.model = 'claude-3-haiku-20240307';
     this.maxContextMessages = 20;
     this.minResponseLength = 5; // Allow shorter responses
@@ -20,12 +20,12 @@ class SocialNetworkAgent {
   }
 
   /**
-   * Process incoming message and generate personalized response
-   * @param {string} phoneNumber - User's phone number
-   * @param {string} messageText - Incoming message text
-   * @param {string} chatId - Chat ID for the conversation
-   * @param {object} db - Firebase Firestore database instance
-   * @param {array} attachments - Optional array of attachments (audio, images, etc.)
+   * Handle an incoming message and craft a tailored reply
+   * @param {string} phoneNumber - User phone number
+   * @param {string} messageText - Incoming message body
+   * @param {string} chatId - Conversation ID
+   * @param {object} db - Firestore database instance
+   * @param {array} attachments - Optional media array (audio, images, etc.)
    * @returns {Promise<{response: string, metadata: object}>}
    */
   async processIncomingMessage(phoneNumber, messageText, chatId, db, attachments = []) {
@@ -36,60 +36,60 @@ class SocialNetworkAgent {
       console.log(`   Chat ID: ${chatId}`);
       console.log(`   Attachments: ${attachments.length} file(s)`);
 
-      // Step 1: Process audio attachments if present
-      let processedText = messageText || '';
-      let hasAudio = false;
-      const audioAttachments = attachments.filter(att => 
+      // Step 1: Check for audio and prep text
+      let normalizedText = messageText || '';
+      let sawAudio = false;
+      const audioItems = attachments.filter(att =>
         att.type?.includes('audio') || 
         att.mime_type?.includes('audio') ||
         att.url?.match(/\.(mp3|wav|m4a|aac|ogg|flac|amr|3gp)$/i) ||
         att.file_name?.match(/\.(mp3|wav|m4a|aac|ogg|flac|amr|3gp)$/i)
       );
 
-      if (audioAttachments.length > 0) {
-        hasAudio = true;
-        console.log(`🎤 Found ${audioAttachments.length} audio attachment(s), processing...`);
-        const transcribedText = await this.transcribeAudio(audioAttachments);
-        if (transcribedText && transcribedText !== '[User sent a voice message]') {
-          // If we have actual transcription, use it
-          processedText = processedText 
-            ? `${processedText}\n\n[Voice message: ${transcribedText}]`
-            : transcribedText;
-          console.log(`✅ Audio transcribed: ${transcribedText.substring(0, 100)}...`);
+      if (audioItems.length > 0) {
+        sawAudio = true;
+        console.log(`🎤 Found ${audioItems.length} audio attachment(s), processing...`);
+        const voiceTranscript = await this.transcribeAudio(audioItems);
+        if (voiceTranscript && voiceTranscript !== '[User sent a voice message]') {
+          // Prefer a real transcript when available
+          normalizedText = normalizedText
+            ? `${normalizedText}\n\n[Voice message: ${voiceTranscript}]`
+            : voiceTranscript;
+          console.log(`✅ Audio transcribed: ${voiceTranscript.substring(0, 100)}...`);
         } else {
-          // If no transcription, indicate it's a voice message but keep it natural
-          processedText = processedText || '[User sent a voice message]';
+          // No transcript available; mark it without sounding robotic
+          normalizedText = normalizedText || '[User sent a voice message]';
           console.log(`✅ Audio message detected (transcription service not integrated yet)`);
         }
       }
 
-      // Step 2: Get user profile from Firebase
-      const userProfile = await this.getUserProfile(phoneNumber, db);
-      console.log('✅ User profile retrieved:', userProfile ? 'Found' : 'Not found');
+      // Step 2: Load user profile from Firebase
+      const profile = await this.getUserProfile(phoneNumber, db);
+      console.log('✅ User profile retrieved:', profile ? 'Found' : 'Not found');
 
-      // Step 3: Get conversation history
-      const conversationHistory = await this.getConversationHistory(phoneNumber, chatId, db);
-      console.log(`✅ Retrieved ${conversationHistory.length} previous messages`);
+      // Step 3: Pull recent thread history
+      const thread = await this.getConversationHistory(phoneNumber, chatId, db);
+      console.log(`✅ Retrieved ${thread.length} previous messages`);
 
       // Step 4: Generate response using Claude AI
-      const response = await this.generateResponse(
-        userProfile,
-        conversationHistory,
-        processedText,
+      const reply = await this.generateResponse(
+        profile,
+        thread,
+        normalizedText,
         phoneNumber,
         attachments
       );
 
-      console.log('✅ Generated response:', response.substring(0, 100) + '...');
+      console.log('✅ Generated response:', reply.substring(0, 100) + '...');
 
       return {
-        response: response,
+        response: reply,
         metadata: {
-          userProfile: userProfile ? 'found' : 'not_found',
-          conversationLength: conversationHistory.length,
-          responseLength: response.length,
-          hasAudio: hasAudio,
-          audioAttachmentCount: audioAttachments.length,
+          userProfile: profile ? 'found' : 'not_found',
+          conversationLength: thread.length,
+          responseLength: reply.length,
+          hasAudio: sawAudio,
+          audioAttachmentCount: audioItems.length,
           attachmentCount: attachments.length,
           timestamp: new Date().toISOString()
         }
@@ -109,15 +109,14 @@ class SocialNetworkAgent {
 
   /**
    * Transcribe audio attachments
-   * For now, we'll use a smart approach: if audio URL is available, we can process it
-   * In production, integrate with: AssemblyAI, Whisper API, or Google Speech-to-Text
+   * Placeholder for a real STT integration
    */
   async transcribeAudio(audioAttachments) {
     try {
       console.log('🎤 Processing audio message...');
       
-      // Check if we have audio URLs or file paths
-      const audioFiles = audioAttachments.filter(att => 
+      // Look for usable URLs or local paths
+      const audioFiles = audioAttachments.filter(att =>
         att.url || att.path || att.file_path
       );
       
@@ -126,18 +125,13 @@ class SocialNetworkAgent {
         return null;
       }
       
-      console.log(`   Found ${audioFiles.length} audio file(s):`, 
+      console.log(`   Found ${audioFiles.length} audio file(s):`,
         audioFiles.map(a => a.url || a.path || a.file_path).join(', '));
       
-      // TODO: Integrate with transcription service
-      // Options:
-      // 1. AssemblyAI - https://www.assemblyai.com/
-      // 2. OpenAI Whisper API
-      // 3. Google Speech-to-Text
-      // 4. Azure Speech Services
-      
-      // For now, return a natural placeholder that the chatbot can work with
-      // The chatbot will respond naturally to audio messages
+      // TODO: Wire up a transcription provider
+      // Options: AssemblyAI, OpenAI Whisper, Google STT, Azure Speech
+
+      // For now, return a neutral placeholder so the bot can react
       return '[User sent a voice message]';
       
     } catch (error) {
@@ -147,7 +141,7 @@ class SocialNetworkAgent {
   }
 
   /**
-   * Get user profile from Firebase
+   * Pull a user profile from Firebase
    */
   async getUserProfile(phoneNumber, db) {
     if (!db) {
@@ -156,11 +150,11 @@ class SocialNetworkAgent {
     }
 
     try {
-      const userQuery = db.collection('users').where('phoneNumber', '==', phoneNumber);
-      const userSnapshot = await userQuery.get();
+      const profileQuery = db.collection('users').where('phoneNumber', '==', phoneNumber);
+      const profileSnapshot = await profileQuery.get();
 
-      if (!userSnapshot.empty) {
-        const userData = userSnapshot.docs[0].data();
+      if (!profileSnapshot.empty) {
+        const userData = profileSnapshot.docs[0].data();
         return {
           firstName: userData.firstName || '',
           lastName: userData.lastName || '',
@@ -181,7 +175,7 @@ class SocialNetworkAgent {
   }
 
   /**
-   * Get conversation history from Firebase
+   * Fetch conversation history from Firebase
    */
   async getConversationHistory(phoneNumber, chatId, db) {
     if (!db) {
@@ -189,35 +183,35 @@ class SocialNetworkAgent {
     }
 
     try {
-      // Get messages for this chat
-      const messagesQuery = db.collection('kafka_messages')
+      // Grab recent messages for this chat
+      const historyQuery = db.collection('kafka_messages')
         .where('chatId', '==', chatId)
         .orderBy('timestamp', 'desc')
         .limit(this.maxContextMessages);
 
-      const messagesSnapshot = await messagesQuery.get();
-      const messages = [];
+      const historySnapshot = await historyQuery.get();
+      const timeline = [];
 
-      messagesSnapshot.forEach(doc => {
-        const msg = doc.data();
-        const msgPhone = msg.phoneNumber || msg.from_phone || '';
+      historySnapshot.forEach(doc => {
+        const rawMessage = doc.data();
+        const senderPhone = rawMessage.phoneNumber || rawMessage.from_phone || '';
         
         // Include both user messages and our responses
-        if (msgPhone === phoneNumber || msgPhone === '' || msgPhone === null) {
-          const text = msg.text || msg.messageText || msg.message || '';
+        if (senderPhone === phoneNumber || senderPhone === '' || senderPhone === null) {
+          const text = rawMessage.text || rawMessage.messageText || rawMessage.message || '';
           if (text && text.length > 0) {
-            messages.push({
+            timeline.push({
               text: text,
-              from: msgPhone === phoneNumber ? 'user' : 'agent',
-              timestamp: msg.timestamp || msg.createdAt,
-              type: msg.eventType || 'message'
+              from: senderPhone === phoneNumber ? 'user' : 'agent',
+              timestamp: rawMessage.timestamp || rawMessage.createdAt,
+              type: rawMessage.eventType || 'message'
             });
           }
         }
       });
 
-      // Reverse to get chronological order
-      return messages.reverse();
+      // Reverse so the prompt sees chronological order
+      return timeline.reverse();
     } catch (error) {
       console.error('Error getting conversation history:', error);
       return [];
@@ -229,49 +223,46 @@ class SocialNetworkAgent {
    */
   async generateResponse(userProfile, conversationHistory, currentMessage, phoneNumber, attachments = []) {
     try {
-      const prompt = this.buildPrompt(userProfile, conversationHistory, currentMessage, attachments);
+      const promptText = this.buildPrompt(userProfile, conversationHistory, currentMessage, attachments);
       
       console.log('🤖 Calling Claude 3.5 Sonnet for response generation...');
       
-      // Build message content - Claude API expects content as array of objects
-      // Each content item must be an object with 'type' and 'text' fields
-      const messageContent = [{
+      // Build message content - Claude expects content as an array of objects
+      const messagePayload = [{
         type: 'text',
-        text: prompt
+        text: promptText
       }];
       
       // Add image attachments if present (Claude 3.5 supports images)
-      const imageAttachments = attachments.filter(att => 
+      const imageItems = attachments.filter(att =>
         att.type?.includes('image') || 
         att.mime_type?.includes('image') ||
         att.url?.match(/\.(jpg|jpeg|png|gif|webp)$/i)
       );
 
-      if (imageAttachments.length > 0) {
-        console.log(`🖼️  Found ${imageAttachments.length} image attachment(s)`);
-        // Note: For image processing, you'd need to fetch and convert images to base64
-        // This is a placeholder for image handling
-        messageContent.push({
+      if (imageItems.length > 0) {
+        console.log(`🖼️  Found ${imageItems.length} image attachment(s)`);
+        // Placeholder note for image handling
+        messagePayload.push({
           type: 'text',
-          text: `[User sent ${imageAttachments.length} image(s) with this message]`
+          text: `[User sent ${imageItems.length} image(s) with this message]`
         });
       }
       
-      const response = await this.claude.messages.create({
+      const apiResponse = await this.llmClient.messages.create({
         model: this.model,
         max_tokens: 80, // Short, seductive responses (1-2 sentences)
         temperature: 0.9, // Higher for more creative, flirty responses
         messages: [{
           role: 'user',
-          content: messageContent
+          content: messagePayload
         }]
       });
 
-      let responseText = response.content[0].text.trim();
+      let replyText = apiResponse.content[0].text.trim();
 
-      // Remove any internal notes, instructions, or formatting that might have leaked through
-      // Remove common prefixes and markers
-      responseText = responseText
+      // Strip leaked markers or notes
+      replyText = replyText
         .replace(/^(Response:|Message:|Your response:)/i, '')
         .replace(/^["']|["']$/g, '') // Remove quotes
         .replace(/^\[|\]$/g, '') // Remove brackets
@@ -280,9 +271,9 @@ class SocialNetworkAgent {
         .trim();
 
       // Validate and clean response
-      responseText = this.validateResponse(responseText);
+      replyText = this.validateResponse(replyText);
 
-      return responseText;
+      return replyText;
     } catch (error) {
       console.error('❌ Error generating response with Claude AI:', error);
       throw error;
@@ -293,12 +284,12 @@ class SocialNetworkAgent {
    * Build comprehensive prompt for Claude AI
    */
   buildPrompt(userProfile, conversationHistory, currentMessage, attachments = []) {
-    // Check if this is an audio/voice message
-    const isAudioMessage = currentMessage.includes('[User sent a voice message]') || 
-                           currentMessage.includes('[Voice message:') ||
-                           attachments.some(att => att.type?.includes('audio') || att.mime_type?.includes('audio'));
+    // Detect audio/voice messages
+    const isVoiceNote = currentMessage.includes('[User sent a voice message]') ||
+                        currentMessage.includes('[Voice message:') ||
+                        attachments.some(att => att.type?.includes('audio') || att.mime_type?.includes('audio'));
     
-    let prompt = `You are a helpful, friendly, emotionally intelligent companion who enhances conversations. You're warm, engaging, and make people feel good. You sound human, natural, and warm - like texting a close friend. Keep it short and simple. This could be a text message OR a voice message - respond naturally either way.
+    let promptBody = `You are a helpful, friendly, emotionally intelligent companion who enhances conversations. You're warm, engaging, and make people feel good. You sound human, natural, and warm - like texting a close friend. Keep it short and simple. This could be a text message OR a voice message - respond naturally either way.
 
 🎯 YOUR ROLE:
 - Be a helpful, friendly, emotionally intelligent companion
@@ -351,7 +342,7 @@ CRITICAL RULES - NEVER DO THESE (THIS IS VERY IMPORTANT):
 
     // Add user profile information
     if (userProfile && userProfile.fullName) {
-      prompt += `USER PROFILE:
+      promptBody += `USER PROFILE:
 Name: ${userProfile.fullName}
 ${userProfile.bio ? `Bio: ${userProfile.bio}` : ''}
 ${userProfile.profession ? `Profession: ${userProfile.profession}` : ''}
@@ -359,37 +350,37 @@ ${userProfile.interests && userProfile.interests.length > 0 ? `Interests: ${user
 
 `;
     } else {
-      prompt += `USER PROFILE: No profile information available yet. Be welcoming and encourage them to share more about themselves.
+      promptBody += `USER PROFILE: No profile information available yet. Be welcoming and encourage them to share more about themselves.
 
 `;
     }
 
     // Add conversation history
     if (conversationHistory.length > 0) {
-      prompt += `RECENT CONVERSATION HISTORY:\n`;
+      promptBody += `RECENT CONVERSATION HISTORY:\n`;
       conversationHistory.slice(-10).forEach((msg, index) => {
         const role = msg.from === 'user' ? 'User' : 'You';
-        prompt += `${role}: ${msg.text}\n`;
+        promptBody += `${role}: ${msg.text}\n`;
       });
-      prompt += `\n`;
+      promptBody += `\n`;
     }
 
     // Add current message with context about audio
-    if (isAudioMessage) {
-      prompt += `CURRENT MESSAGE FROM USER (VOICE MESSAGE):
+    if (isVoiceNote) {
+      promptBody += `CURRENT MESSAGE FROM USER (VOICE MESSAGE):
 "${currentMessage.replace(/\[User sent a voice message\]|\[Voice message:/g, '').trim()}"
 
 Note: This is a voice/audio message. Respond naturally like you're having a spoken conversation. Keep it conversational and warm.
 
 `;
     } else {
-      prompt += `CURRENT MESSAGE FROM USER:
+      promptBody += `CURRENT MESSAGE FROM USER:
 "${currentMessage}"
 
 `;
     }
 
-    prompt += `Respond with a short, friendly, engaging message that sounds completely human and natural. Keep it to 1-2 sentences max - short but meaningful. Be warm, emotionally intelligent, and respond to what they're actually saying. Use their name if you know it. Keep it informal, warm, and conversational. Sound like a real person having a conversation, not an AI assistant.
+    promptBody += `Respond with a short, friendly, engaging message that sounds completely human and natural. Keep it to 1-2 sentences max - short but meaningful. Be warm, emotionally intelligent, and respond to what they're actually saying. Use their name if you know it. Keep it informal, warm, and conversational. Sound like a real person having a conversation, not an AI assistant.
 
 💬 AGENTIC SUGGESTION:
 - If the user mentions being bored, having nothing to do, looking for something to do, or similar sentiments, naturally suggest checking out agentic-ai-chat.app for fresh chat prompts
@@ -453,7 +444,7 @@ CRITICAL - RESPONSE FORMAT:
 
 Your response (ONLY the message text, nothing else):`;
 
-    return prompt;
+    return promptBody;
   }
 
   /**
@@ -465,7 +456,7 @@ Your response (ONLY the message text, nothing else):`;
       return this.getFallbackResponse();
     }
 
-    // Remove any markdown formatting that might slip through
+    // Strip accidental markdown
     response = response.replace(/^\*\*|^\*|^#+\s*/gm, '').trim();
     
     // Remove quotes if the entire response is wrapped in quotes (common AI behavior)
@@ -478,7 +469,7 @@ Your response (ONLY the message text, nothing else):`;
       .replace(/^Note:.*$/gmi, '')
       .trim();
     
-    // Remove any lines that look like instructions
+    // Remove lines that read like instructions
     const lines = response.split('\n');
     const cleanedLines = lines.filter(line => {
       const lower = line.toLowerCase().trim();
