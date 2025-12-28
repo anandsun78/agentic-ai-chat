@@ -1,5 +1,9 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const admin = require('firebase-admin');
+const { CONFIG } = require('../../config/constants');
+
+const { collections } = CONFIG.firebase;
+const { defaultMessageType } = CONFIG.messaging;
 
 class SocialNetworkAgent {
   constructor() {
@@ -150,7 +154,7 @@ class SocialNetworkAgent {
     }
 
     try {
-      const profileQuery = db.collection('users').where('phoneNumber', '==', phoneNumber);
+      const profileQuery = db.collection(collections.users).where('phoneNumber', '==', phoneNumber);
       const profileSnapshot = await profileQuery.get();
 
       if (!profileSnapshot.empty) {
@@ -163,7 +167,7 @@ class SocialNetworkAgent {
           interests: userData.interests || [],
           skills: userData.skills || [],
           profession: userData.profession || '',
-          profileType: userData.profileType || 'unknown'
+          profileType: userData.profileType || CONFIG.profiles.defaultType
         };
       }
 
@@ -184,7 +188,7 @@ class SocialNetworkAgent {
 
     try {
       // Grab recent messages for this chat
-      const historyQuery = db.collection('kafka_messages')
+      const historyQuery = db.collection(collections.messages)
         .where('chatId', '==', chatId)
         .orderBy('timestamp', 'desc')
         .limit(this.maxContextMessages);
@@ -204,7 +208,7 @@ class SocialNetworkAgent {
               text: text,
               from: senderPhone === phoneNumber ? 'user' : 'agent',
               timestamp: rawMessage.timestamp || rawMessage.createdAt,
-              type: rawMessage.eventType || 'message'
+              type: rawMessage.eventType || defaultMessageType
             });
           }
         }

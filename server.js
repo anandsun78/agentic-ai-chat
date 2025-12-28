@@ -10,6 +10,8 @@ const axios = require('axios');
 const KafkaConsumer = require('./kafka/consumer');
 const AgenticAPIClient = require('./api/agentic-client');
 const SocialNetworkAgent = require('./backend/chatbot/service');
+const { CONFIG } = require('./config/constants');
+const { events, firebase, kafka, messaging } = CONFIG;
 // Firebase service - handle errors gracefully
 let firebaseBridge = null;
 try {
@@ -77,7 +79,7 @@ const wsClients = new Set();
 
 // Store Kafka events in memory for phone number lookup
 const eventBuffer = [];
-const MAX_BUFFERED_EVENTS = 1000;
+const MAX_BUFFERED_EVENTS = Math.max(1, kafka.maxBufferedEvents);
 
 // Initialize API client (with error handling)
 let agenticClient = null;
@@ -141,11 +143,11 @@ function ensureConsumer() {
     const kafkaConsumer = new KafkaConsumer();
 
     // Handle incoming messages
-    kafkaConsumer.onEvent('message.received', async (eventData) => {
+    kafkaConsumer.onEvent(events.messageReceived, async (eventData) => {
       const { data } = eventData;
       
       const wsPayload = {
-        type: 'message.received',
+        type: events.messageReceived,
         event: {
           id: eventData.event_id,
           createdAt: eventData.created_at,
@@ -165,7 +167,7 @@ function ensureConsumer() {
       // Store event for phone number lookup
       eventBuffer.push({
         phoneNumber: data.from_phone,
-        eventType: 'message.received',
+        eventType: events.messageReceived,
         timestamp: eventData.created_at,
         chatId: data.chat_id,
         ...wsPayload
@@ -179,7 +181,7 @@ function ensureConsumer() {
       // Save to Firebase
       if (firebaseBridge && typeof firebaseBridge.saveMessageReceivedToFirebase === 'function') {
         try {
-          console.log('💾 Saving message.received to Firebase...');
+          console.log(`💾 Saving ${events.messageReceived} to Firebase...`);
           console.log('   Event data:', JSON.stringify({
             event_id: eventData.event_id,
             from_phone: data.from_phone,
@@ -189,19 +191,19 @@ function ensureConsumer() {
           
           const messageId = await firebaseBridge.saveMessageReceivedToFirebase(eventData);
           if (messageId) {
-            console.log(`✅ Message saved to Firebase kafka_messages collection (ID: ${messageId})`);
+            console.log(`✅ Message saved to Firebase ${firebase.collections.messages} collection (ID: ${messageId})`);
           } else {
             console.warn('⚠️  saveMessageReceivedToFirebase returned null/undefined');
           }
           
-          const eventId = await firebaseBridge.saveKafkaEventToFirebase('message.received', eventData);
+          const eventId = await firebaseBridge.saveKafkaEventToFirebase(events.messageReceived, eventData);
           if (eventId) {
-            console.log(`✅ Kafka event saved to Firebase kafka_events collection (ID: ${eventId})`);
+            console.log(`✅ Kafka event saved to Firebase ${firebase.collections.events} collection (ID: ${eventId})`);
           } else {
             console.warn('⚠️  saveKafkaEventToFirebase returned null/undefined');
           }
         } catch (error) {
-          console.error('❌ Error saving message.received to Firebase:', error);
+          console.error(`❌ Error saving ${events.messageReceived} to Firebase:`, error);
           console.error('   Error type:', error.constructor.name);
           console.error('   Error message:', error.message);
           console.error('   Error code:', error.code);
@@ -209,7 +211,7 @@ function ensureConsumer() {
           // Continue even if Firebase save fails
         }
       } else {
-        console.warn('⚠️  Firebase service not available for saving message.received');
+        console.warn(`⚠️  Firebase service not available for saving ${events.messageReceived}`);
         console.warn('   firebaseBridge exists:', !!firebaseBridge);
         console.warn('   saveMessageReceivedToFirebase is function:', typeof firebaseBridge?.saveMessageReceivedToFirebase);
       }
@@ -249,23 +251,23 @@ function ensureConsumer() {
     });
 
     // Handle typing indicators
-    kafkaConsumer.onEvent('typing_indicator.received', async (eventData) => {
+    kafkaConsumer.onEvent(events.typingIndicatorReceived, async (eventData) => {
       const { data } = eventData;
       
       // Save to Firebase
       if (firebaseBridge && typeof firebaseBridge.saveTypingIndicatorToFirebase === 'function') {
         try {
-          await firebaseBridge.saveTypingIndicatorToFirebase('typing_indicator.received', eventData);
-          await firebaseBridge.saveKafkaEventToFirebase('typing_indicator.received', eventData);
+          await firebaseBridge.saveTypingIndicatorToFirebase(events.typingIndicatorReceived, eventData);
+          await firebaseBridge.saveKafkaEventToFirebase(events.typingIndicatorReceived, eventData);
           console.log('✅ Typing indicator saved to Firebase');
         } catch (error) {
-          console.error('❌ Error saving typing_indicator.received to Firebase:', error);
+          console.error(`❌ Error saving ${events.typingIndicatorReceived} to Firebase:`, error);
           // Continue even if Firebase save fails
         }
       }
       
       broadcastWs({
-        type: 'typing_indicator.received',
+        type: events.typingIndicatorReceived,
         event: {
           id: eventData.event_id,
           createdAt: eventData.created_at,
@@ -278,23 +280,23 @@ function ensureConsumer() {
       });
     });
 
-    kafkaConsumer.onEvent('typing_indicator.removed', async (eventData) => {
+    kafkaConsumer.onEvent(events.typingIndicatorRemoved, async (eventData) => {
       const { data } = eventData;
       
       // Save to Firebase
       if (firebaseBridge && typeof firebaseBridge.saveTypingIndicatorToFirebase === 'function') {
         try {
-          await firebaseBridge.saveTypingIndicatorToFirebase('typing_indicator.removed', eventData);
-          await firebaseBridge.saveKafkaEventToFirebase('typing_indicator.removed', eventData);
+          await firebaseBridge.saveTypingIndicatorToFirebase(events.typingIndicatorRemoved, eventData);
+          await firebaseBridge.saveKafkaEventToFirebase(events.typingIndicatorRemoved, eventData);
           console.log('✅ Typing indicator removed saved to Firebase');
         } catch (error) {
-          console.error('❌ Error saving typing_indicator.removed to Firebase:', error);
+          console.error(`❌ Error saving ${events.typingIndicatorRemoved} to Firebase:`, error);
           // Continue even if Firebase save fails
         }
       }
       
       broadcastWs({
-        type: 'typing_indicator.removed',
+        type: events.typingIndicatorRemoved,
         event: {
           id: eventData.event_id,
           createdAt: eventData.created_at,
@@ -308,13 +310,13 @@ function ensureConsumer() {
     });
 
     // Handle message.sent events (messages we sent)
-    kafkaConsumer.onEvent('message.sent', async (eventData) => {
+    kafkaConsumer.onEvent(events.messageSent, async (eventData) => {
       const { data } = eventData;
       
       // Save to Firebase
       if (firebaseBridge && typeof firebaseBridge.saveMessageSentToFirebase === 'function') {
         try {
-          console.log('💾 Saving message.sent to Firebase...');
+          console.log(`💾 Saving ${events.messageSent} to Firebase...`);
           console.log('   Event data:', JSON.stringify({
             event_id: eventData.event_id,
             from_phone: data.from_phone,
@@ -324,19 +326,19 @@ function ensureConsumer() {
           
           const messageId = await firebaseBridge.saveMessageSentToFirebase(eventData);
           if (messageId) {
-            console.log(`✅ Message sent saved to Firebase kafka_messages collection (ID: ${messageId})`);
+            console.log(`✅ Message sent saved to Firebase ${firebase.collections.messages} collection (ID: ${messageId})`);
           } else {
             console.warn('⚠️  saveMessageSentToFirebase returned null/undefined');
           }
           
-          const eventId = await firebaseBridge.saveKafkaEventToFirebase('message.sent', eventData);
+          const eventId = await firebaseBridge.saveKafkaEventToFirebase(events.messageSent, eventData);
           if (eventId) {
-            console.log(`✅ Kafka event saved to Firebase kafka_events collection (ID: ${eventId})`);
+            console.log(`✅ Kafka event saved to Firebase ${firebase.collections.events} collection (ID: ${eventId})`);
           } else {
             console.warn('⚠️  saveKafkaEventToFirebase returned null/undefined');
           }
         } catch (error) {
-          console.error('❌ Error saving message.sent to Firebase:', error);
+          console.error(`❌ Error saving ${events.messageSent} to Firebase:`, error);
           console.error('   Error type:', error.constructor.name);
           console.error('   Error message:', error.message);
           console.error('   Error code:', error.code);
@@ -344,13 +346,13 @@ function ensureConsumer() {
           // Continue even if Firebase save fails
         }
       } else {
-        console.warn('⚠️  Firebase service not available for saving message.sent');
+        console.warn(`⚠️  Firebase service not available for saving ${events.messageSent}`);
         console.warn('   firebaseBridge exists:', !!firebaseBridge);
         console.warn('   saveMessageSentToFirebase is function:', typeof firebaseBridge?.saveMessageSentToFirebase);
       }
       
       broadcastWs({
-        type: 'message.sent',
+        type: events.messageSent,
         event: {
           id: eventData.event_id,
           createdAt: eventData.created_at,
@@ -376,7 +378,7 @@ function ensureConsumer() {
 /**
  * Process incoming message with chatbot and send response
  */
-async function handleChatbotReply(phoneNumber, messageText, chatId, service = 'iMessage', attachments = []) {
+async function handleChatbotReply(phoneNumber, messageText, chatId, service = messaging.defaultService, attachments = []) {
   try {
     if (!chatbotAgent) {
       console.warn('⚠️  Chatbot agent not available');
@@ -443,13 +445,13 @@ async function handleChatbotReply(phoneNumber, messageText, chatId, service = 'i
       // Save chatbot response to Firebase for conversation history
       try {
         const admin = require('firebase-admin');
-        await db.collection('kafka_messages').add({
-          eventType: 'message.sent',
+        await db.collection(firebase.collections.messages).add({
+          eventType: events.messageSent,
           phoneNumber: phoneNumber,
           chatId: chatId,
           messageText: responseText,
           text: responseText,
-          service: service || 'iMessage',
+          service: service || messaging.defaultService,
           isBotResponse: true,
           botType: 'social_network_agent',
           originalMessage: messageText,
@@ -464,7 +466,7 @@ async function handleChatbotReply(phoneNumber, messageText, chatId, service = 'i
 
       // Broadcast chatbot response to connected clients
       broadcastWs({
-        type: 'message.sent',
+        type: events.messageSent,
         event: {
           id: replyResponse.data?.id || null,
           createdAt: new Date().toISOString(),
@@ -553,7 +555,7 @@ app.post('/api/matching/find', async (req, res) => {
         
         // Get user data
         try {
-          const userQuery = db.collection('users').where('phoneNumber', '==', phoneNumber);
+          const userQuery = db.collection(firebase.collections.users).where('phoneNumber', '==', phoneNumber);
           const userSnapshot = await userQuery.get();
           
           if (!userSnapshot.empty) {
@@ -574,8 +576,8 @@ app.post('/api/matching/find', async (req, res) => {
     
     if (db) {
       try {
-        // Try kafka_messages collection - get all messages and filter by phone number
-        const messagesSnapshot = await db.collection('kafka_messages')
+        // Try configured messages collection - get all messages and filter by phone number
+        const messagesSnapshot = await db.collection(firebase.collections.messages)
           .orderBy('timestamp', 'desc')
           .limit(100)
           .get();

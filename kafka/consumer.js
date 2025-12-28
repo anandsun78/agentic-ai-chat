@@ -1,4 +1,7 @@
 const { getKafkaInstance, getTopicName, getConsumerGroup, validateConfig } = require('./config');
+const { CONFIG } = require('../config/constants');
+
+const { events } = CONFIG;
 
 /**
  * Kafka consumer for inbound events
@@ -96,12 +99,12 @@ class KafkaConsumer {
       } catch (e) {
         // If not JSON, treat as plain text
         eventPayload = {
-          event_type: 'unknown',
+          event_type: events.unknown,
           data: { text: rawValue },
         };
       }
 
-      const eventType = eventPayload.event_type || 'unknown';
+      const eventType = eventPayload.event_type || events.unknown;
       const eventId = eventPayload.event_id || 'unknown';
       const createdAt = eventPayload.created_at || new Date().toISOString();
 
@@ -124,17 +127,17 @@ class KafkaConsumer {
 
       // Handle specific event types
       switch (eventType) {
-        case 'message.received':
+        case events.messageReceived:
           this.handleMessageReceived(eventPayload);
           break;
-        case 'message.sent':
+        case events.messageSent:
           // Handle messages we sent (for confirmation)
           this.handleMessageReceived(eventPayload);
           break;
-        case 'typing_indicator.received':
+        case events.typingIndicatorReceived:
           this.handleTypingIndicatorReceived(eventPayload);
           break;
-        case 'typing_indicator.removed':
+        case events.typingIndicatorRemoved:
           this.handleTypingIndicatorRemoved(eventPayload);
           break;
         default:

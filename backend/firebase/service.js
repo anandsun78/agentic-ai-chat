@@ -1,4 +1,9 @@
 const admin = require('firebase-admin');
+const { CONFIG } = require('../../config/constants');
+
+const { collections, projectId } = CONFIG.firebase;
+const { defaultService } = CONFIG.messaging;
+const { events } = CONFIG;
 
 // Initialize Firebase Admin SDK
 let isFirebaseReady = false;
@@ -19,7 +24,7 @@ function initializeFirebase() {
         const serviceCreds = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
         admin.initializeApp({
           credential: admin.credential.cert(serviceCreds),
-          projectId: serviceCreds.project_id || 'allinonehrm'
+          projectId: serviceCreds.project_id || projectId
         });
         console.log(`✅ Firebase initialized with service account file: ${serviceCreds.project_id}`);
       }
@@ -28,7 +33,7 @@ function initializeFirebase() {
         const serviceCreds = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
         admin.initializeApp({
           credential: admin.credential.cert(serviceCreds),
-          projectId: serviceCreds.project_id || 'allinonehrm'
+          projectId: serviceCreds.project_id || projectId
         });
         console.log(`✅ Firebase initialized with service account: ${serviceCreds.project_id}`);
       }
@@ -40,13 +45,13 @@ function initializeFirebase() {
           const serviceCreds = require(defaultServiceAccountPath);
           admin.initializeApp({
             credential: admin.credential.cert(serviceCreds),
-            projectId: serviceCreds.project_id || 'allinonehrm'
+            projectId: serviceCreds.project_id || projectId
           });
           console.log(`✅ Firebase initialized with service account from: ${defaultServiceAccountPath}`);
           console.log(`   Project: ${serviceCreds.project_id}`);
         } catch (fileError) {
           // Option 4: Application Default Credentials (gcloud auth application-default login)
-          const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || 'allinonehrm';
+          const firebaseProjectId = projectId;
           try {
             admin.initializeApp({
               projectId: firebaseProjectId,
@@ -106,12 +111,12 @@ async function saveKafkaEventToFirebase(eventType, eventData) {
     };
 
     console.log(`💾 Attempting to save Kafka event to Firebase: ${eventType}`);
-    console.log(`   Collection: kafka_events`);
+    console.log(`   Collection: ${collections.events}`);
     console.log(`   Event ID: ${kafkaRecord.eventId}`);
 
     // Save to 'kafka_events' collection
-    const savedRef = await db.collection('kafka_events').add(kafkaRecord);
-    console.log(`✅ Kafka event saved to Firebase: ${eventType} (Collection: kafka_events, Doc ID: ${savedRef.id})`);
+    const savedRef = await db.collection(collections.events).add(kafkaRecord);
+    console.log(`✅ Kafka event saved to Firebase: ${eventType} (Collection: ${collections.events}, Doc ID: ${savedRef.id})`);
     
     return savedRef.id;
   } catch (error) {
@@ -145,14 +150,14 @@ async function saveMessageReceivedToFirebase(eventData) {
     }
     
     const inboundDoc = {
-      eventType: 'message.received',
+      eventType: events.messageReceived,
       eventId: eventData.event_id || null,
       phoneNumber: data.from_phone || null,
       chatId: data.chat_id || null,
       messageText: data.text || '',
       text: data.text || '', // Also save as 'text' for compatibility
       sentAt: data.sent_at || null,
-      service: data.service || 'iMessage',
+      service: data.service || defaultService,
       isRead: data.is_read || false,
       attachments: data.attachments || [],
       participants: data.chat_handles || [],
@@ -162,14 +167,14 @@ async function saveMessageReceivedToFirebase(eventData) {
     };
 
     console.log(`💾 Attempting to save message to Firebase`);
-    console.log(`   Collection: kafka_messages`);
+    console.log(`   Collection: ${collections.messages}`);
     console.log(`   From phone: ${inboundDoc.phoneNumber}`);
     console.log(`   Chat ID: ${inboundDoc.chatId}`);
     console.log(`   Message text length: ${inboundDoc.messageText?.length || 0}`);
 
     // Save to 'kafka_messages' collection in Firestore
-    const savedRef = await db.collection('kafka_messages').add(inboundDoc);
-    console.log(`✅ Message received saved to Firestore (Collection: kafka_messages, Doc ID: ${savedRef.id}, From: ${data.from_phone})`);
+    const savedRef = await db.collection(collections.messages).add(inboundDoc);
+    console.log(`✅ Message received saved to Firestore (Collection: ${collections.messages}, Doc ID: ${savedRef.id}, From: ${data.from_phone})`);
     
     return savedRef.id;
   } catch (error) {
@@ -207,14 +212,14 @@ async function saveMessageSentToFirebase(eventData) {
     }
     
     const outboundDoc = {
-      eventType: 'message.sent',
+      eventType: events.messageSent,
       eventId: eventData.event_id || null,
       phoneNumber: data.from_phone || null,
       chatId: data.chat_id || null,
       messageText: data.text || '',
       text: data.text || '', // Also save as 'text' for compatibility
       sentAt: data.sent_at || null,
-      service: data.service || 'iMessage',
+      service: data.service || defaultService,
       messageId: data.id || null,
       fullEventData: eventData,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
@@ -222,12 +227,12 @@ async function saveMessageSentToFirebase(eventData) {
     };
 
     console.log(`💾 Attempting to save sent message to Firebase`);
-    console.log(`   Collection: kafka_messages`);
+    console.log(`   Collection: ${collections.messages}`);
     console.log(`   From phone: ${outboundDoc.phoneNumber}`);
 
     // Save to 'kafka_messages' collection in Firestore
-    const savedRef = await db.collection('kafka_messages').add(outboundDoc);
-    console.log(`✅ Message sent saved to Firestore (Collection: kafka_messages, Doc ID: ${savedRef.id}, From: ${data.from_phone})`);
+    const savedRef = await db.collection(collections.messages).add(outboundDoc);
+    console.log(`✅ Message sent saved to Firestore (Collection: ${collections.messages}, Doc ID: ${savedRef.id}, From: ${data.from_phone})`);
     
     return savedRef.id;
   } catch (error) {
@@ -266,8 +271,8 @@ async function saveTypingIndicatorToFirebase(eventType, eventData) {
     };
 
     // Save to 'kafka_typing_indicators' collection in Firestore
-    const savedRef = await db.collection('kafka_typing_indicators').add(typingRecord);
-    console.log(`✅ Typing indicator saved to Firestore: ${eventType} (Collection: kafka_typing_indicators, Doc ID: ${savedRef.id})`);
+    const savedRef = await db.collection(collections.typingIndicators).add(typingRecord);
+    console.log(`✅ Typing indicator saved to Firestore: ${eventType} (Collection: ${collections.typingIndicators}, Doc ID: ${savedRef.id})`);
     
     return savedRef.id;
   } catch (error) {
