@@ -16,6 +16,14 @@ const getFloat = (key, fallback) => {
   return Number.isNaN(value) ? fallback : value;
 };
 
+const getBool = (key, fallback) => {
+  const value = process.env[key];
+  if (value === undefined || value === '') {
+    return fallback;
+  }
+  return value.toLowerCase() === 'true';
+};
+
 const CONFIG = Object.freeze({
   firebase: {
     projectId: getString('FIREBASE_PROJECT_ID', 'allinonehrm'),
@@ -28,6 +36,7 @@ const CONFIG = Object.freeze({
       ),
       users: getString('FIREBASE_COLLECTION_USERS', 'users'),
     },
+    permissionDeniedCode: getInt('FIREBASE_PERMISSION_DENIED_CODE', 7),
   },
   messaging: {
     defaultService: getString('DEFAULT_MESSAGE_SERVICE', 'iMessage'),
@@ -48,6 +57,17 @@ const CONFIG = Object.freeze({
     defaultType: getString('DEFAULT_PROFILE_TYPE', 'unknown'),
   },
   kafka: {
+    clientId: getString('KAFKA_CLIENT_ID', 'agentic-client'),
+    bootstrapServers: getString('KAFKA_BOOTSTRAP_SERVERS', ''),
+    topicName: getString('KAFKA_TOPIC_NAME', ''),
+    consumerGroup: getString('KAFKA_CONSUMER_GROUP', ''),
+    sasl: {
+      mechanism: getString('KAFKA_SASL_MECHANISM', 'plain'),
+      username: getString('KAFKA_SASL_USERNAME', ''),
+      password: getString('KAFKA_SASL_PASSWORD', ''),
+    },
+    tlsEnabled: getBool('KAFKA_TLS_ENABLED', false),
+    useUniqueGroup: getBool('KAFKA_USE_UNIQUE_GROUP', false),
     maxBufferedEvents: getInt('MAX_BUFFERED_EVENTS', 1000),
     connectionTimeoutMs: getInt('KAFKA_CONNECTION_TIMEOUT_MS', 3000),
     requestTimeoutMs: getInt('KAFKA_REQUEST_TIMEOUT_MS', 30000),
@@ -71,6 +91,8 @@ const CONFIG = Object.freeze({
     baseScore: getInt('MATCHING_BASE_SCORE', 50),
     maxScore: getInt('MATCHING_MAX_SCORE', 100),
     matchLimit: getInt('MATCHING_RESULTS_LIMIT', 30),
+    selectionMin: getInt('MATCHING_SELECTION_MIN', 5),
+    selectionMax: getInt('MATCHING_SELECTION_MAX', 8),
     scoredProfilesLimit: getInt('MATCHING_SCORED_PROFILES_LIMIT', 20),
     scoringModel: getString('MATCHING_SCORING_MODEL', 'claude-3-5-sonnet-20241022'),
     scoringMaxTokens: getInt('MATCHING_SCORING_MAX_TOKENS', 2000),

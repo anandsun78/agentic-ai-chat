@@ -1,7 +1,7 @@
 const admin = require('firebase-admin');
 const { CONFIG } = require('../../config/constants');
 
-const { collections, projectId } = CONFIG.firebase;
+const { collections, projectId, permissionDeniedCode } = CONFIG.firebase;
 const { defaultService } = CONFIG.messaging;
 const { events } = CONFIG;
 
@@ -181,7 +181,7 @@ async function saveMessageReceivedToFirebase(eventData) {
     console.error('❌ Error saving message received to Firestore:', error);
     console.error(`   Error code: ${error.code}`);
     console.error(`   Error message: ${error.message}`);
-    if (error.code === 7 || error.message.includes('PERMISSION_DENIED') || error.message.includes('authentication')) {
+    if (error.code === permissionDeniedCode || error.message.includes('PERMISSION_DENIED') || error.message.includes('authentication')) {
       console.error('   This is a Firestore authentication/permission error');
       console.error('   Please check Firebase credentials and Firestore security rules');
     }
@@ -239,7 +239,7 @@ async function saveMessageSentToFirebase(eventData) {
     console.error('❌ Error saving message sent to Firestore:', error);
     console.error(`   Error code: ${error.code}`);
     console.error(`   Error message: ${error.message}`);
-    if (error.code === 7 || error.message.includes('PERMISSION_DENIED') || error.message.includes('authentication')) {
+    if (error.code === permissionDeniedCode || error.message.includes('PERMISSION_DENIED') || error.message.includes('authentication')) {
       console.error('   This is a Firestore authentication/permission error');
       console.error('   Please check Firebase credentials and Firestore security rules');
     }
@@ -276,7 +276,7 @@ async function saveTypingIndicatorToFirebase(eventType, eventData) {
     
     return savedRef.id;
   } catch (error) {
-    if (error.code === 7 || error.message.includes('PERMISSION_DENIED') || error.message.includes('authentication')) {
+    if (error.code === permissionDeniedCode || error.message.includes('PERMISSION_DENIED') || error.message.includes('authentication')) {
       console.error(`❌ Firestore authentication error (${eventType}):`, error.message);
       console.error('   Please set up Firebase credentials (see FIREBASE_SETUP.md)');
     } else {

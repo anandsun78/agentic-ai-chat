@@ -1065,13 +1065,13 @@ ${userData ? JSON.stringify(userData, null, 2) : 'No profile data available'}
 CONVERSATION HISTORY (recent messages):
 ${conversations.length > 0 ? conversations.map((c, i) => `${i + 1}. ${c.text}`).join('\n') : 'No conversation history'}
 
-AVAILABLE PROFILES (20 diverse professionals from doctors to tech):
+AVAILABLE PROFILES (${mockProfiles.length} diverse professionals from doctors to tech):
 ${JSON.stringify(mockProfiles, null, 2)}
 
 Based on this information:
 1. Analyze the user's interests, profession, and conversation themes
-2. Select 5-8 profiles that would be the best matches
-3. Score each selected profile (0-100) based on relevance
+2. Select ${matching.selectionMin}-${matching.selectionMax} profiles that would be the best matches
+3. Score each selected profile (0-${matching.maxScore}) based on relevance
 4. Provide reasoning for each match
 
 Respond in JSON format:
@@ -1192,7 +1192,7 @@ function matchProfilesFromMock(userData, conversations, mockProfiles) {
     };
   });
   
-  // Sort by score and return all matches (or top 20 if too many)
+  // Sort by score and return top matches
   const sorted = scored.sort((a, b) => b.score - a.score);
   return sorted.slice(0, matching.matchLimit); // Return top matches
 }
@@ -1286,7 +1286,7 @@ ${JSON.stringify(matchingCriteria, null, 2)}
 LINKEDIN PROFILES TO SCORE:
 ${JSON.stringify(matches.slice(0, matching.scoredProfilesLimit), null, 2)}
 
-For each profile, provide a relevance score (0-100) and brief explanation.
+For each profile, provide a relevance score (0-${matching.maxScore}) and brief explanation.
 Respond in JSON format:
 {
   "scoredMatches": [
@@ -1708,8 +1708,8 @@ process.on('SIGINT', async () => {
 });
 
 // Start server
-const PORT = process.env.PORT || 8000; // Changed to 8000 to match user's access
-const HOST = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for Cloud Run
+const PORT = process.env.PORT || serverConfig.defaultPort; // Changed to 8000 to match user's access
+const HOST = process.env.HOST || serverConfig.defaultHost; // Bind to all interfaces for Cloud Run
 
 server.listen(PORT, HOST, () => {
   console.log(`🚀 iMessage API Server running on ${HOST}:${PORT}`);

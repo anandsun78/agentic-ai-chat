@@ -1,8 +1,17 @@
 import json
 import boto3
 
+# Constants
+REGION_NAME = 'us-east-1'
+MODEL_ID = 'us.anthropic.claude-3-5-haiku-20241022-v1:0'
+ANTHROPIC_VERSION = 'bedrock-2023-05-31'
+MAX_TOKENS = 300
+STATUS_OK = 200
+STATUS_BAD_REQUEST = 400
+STATUS_ERROR = 500
+
 # Initialize the Bedrock Runtime Client
-bedrock_client = boto3.client(service_name='bedrock-runtime', region_name='us-east-1')
+bedrock_client = boto3.client(service_name='bedrock-runtime', region_name=REGION_NAME)
 
 def lambda_handler(event, context):
     try:
@@ -11,7 +20,7 @@ def lambda_handler(event, context):
         input_text = event.get('message', '')
         
         if not input_text:
-            return {'statusCode': 400, 'body': 'No message provided'}
+            return {'statusCode': STATUS_BAD_REQUEST, 'body': 'No message provided'}
 
         print(f"Analyzing message: {input_text}")
 
@@ -42,8 +51,8 @@ def lambda_handler(event, context):
         # 3. Payload for Claude 3.5 Haiku
         # Note: 3.5 Haiku uses the Messages API format
         request_body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 300,
+            "anthropic_version": ANTHROPIC_VERSION,
+            "max_tokens": MAX_TOKENS,
             "messages": [
                 {
                     "role": "user", 
@@ -57,10 +66,8 @@ def lambda_handler(event, context):
         # 4. Invoke Model
         # Use 'us.anthropic.claude-3-5-haiku-20241022-v1:0' for US regions (Inference Profile)
         # If that fails, try the base ID: 'anthropic.claude-3-5-haiku-20241022-v1:0'
-        model_id = 'us.anthropic.claude-3-5-haiku-20241022-v1:0'
-        
         model_response = bedrock_client.invoke_model(
-            modelId=model_id,
+            modelId=MODEL_ID,
             body=request_body
         )
 
@@ -72,13 +79,13 @@ def lambda_handler(event, context):
 
         # Return the AI's analysis to your Bridge Script
         return {
-            'statusCode': 200,
+            'statusCode': STATUS_OK,
             'body': model_text
         }
 
     except Exception as e:
         print(f"ERROR: {str(e)}")
         return {
-            'statusCode': 500,
+            'statusCode': STATUS_ERROR,
             'body': json.dumps({"error": str(e)})
         }

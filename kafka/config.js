@@ -9,13 +9,13 @@ const { kafka: kafkaConstants } = CONFIG;
  * Values are sourced from environment variables
  */
 const kafkaConfig = {
-  clientId: process.env.KAFKA_CLIENT_ID || 'agentic-client',
-  brokers: [process.env.KAFKA_BOOTSTRAP_SERVERS || ''],
-  ssl: process.env.KAFKA_TLS_ENABLED === 'true',
+  clientId: kafkaConstants.clientId,
+  brokers: [kafkaConstants.bootstrapServers],
+  ssl: kafkaConstants.tlsEnabled,
   sasl: {
-    mechanism: process.env.KAFKA_SASL_MECHANISM || 'plain',
-    username: process.env.KAFKA_SASL_USERNAME || '',
-    password: process.env.KAFKA_SASL_PASSWORD || '',
+    mechanism: kafkaConstants.sasl.mechanism,
+    username: kafkaConstants.sasl.username,
+    password: kafkaConstants.sasl.password,
   },
   connectionTimeout: kafkaConstants.connectionTimeoutMs,
   requestTimeout: kafkaConstants.requestTimeoutMs,
@@ -26,16 +26,18 @@ const kafkaConfig = {
 };
 
 // Required environment variables
-const requiredEnvVars = [
-  'KAFKA_BOOTSTRAP_SERVERS',
-  'KAFKA_SASL_USERNAME',
-  'KAFKA_SASL_PASSWORD',
-  'KAFKA_TOPIC_NAME',
-  'KAFKA_CONSUMER_GROUP',
-];
+const requiredKafkaConfig = {
+  KAFKA_BOOTSTRAP_SERVERS: kafkaConstants.bootstrapServers,
+  KAFKA_SASL_USERNAME: kafkaConstants.sasl.username,
+  KAFKA_SASL_PASSWORD: kafkaConstants.sasl.password,
+  KAFKA_TOPIC_NAME: kafkaConstants.topicName,
+  KAFKA_CONSUMER_GROUP: kafkaConstants.consumerGroup,
+};
 
 function validateConfig() {
-  const missing = requiredEnvVars.filter((envName) => !process.env[envName]);
+  const missing = Object.entries(requiredKafkaConfig)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
 
   if (missing.length > 0) {
     throw new Error(
@@ -61,13 +63,13 @@ module.exports = {
   kafkaConfig,
   getKafkaInstance,
   validateConfig,
-  getTopicName: () => process.env.KAFKA_TOPIC_NAME,
+  getTopicName: () => kafkaConstants.topicName,
   getConsumerGroup: () => {
     // Allow override with unique consumer group for testing
-    if (process.env.KAFKA_USE_UNIQUE_GROUP === 'true') {
-      return `${process.env.KAFKA_CONSUMER_GROUP}-${Date.now()}`;
+    if (kafkaConstants.useUniqueGroup) {
+      return `${kafkaConstants.consumerGroup}-${Date.now()}`;
     }
-    return process.env.KAFKA_CONSUMER_GROUP;
+    return kafkaConstants.consumerGroup;
   },
-  getClientId: () => process.env.KAFKA_CLIENT_ID || kafkaConfig.clientId,
+  getClientId: () => kafkaConstants.clientId || kafkaConfig.clientId,
 };

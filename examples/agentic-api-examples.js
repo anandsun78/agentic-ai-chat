@@ -1,6 +1,11 @@
 const AgenticAPIClient = require('../api/agentic-client');
 const { ReactionTypes, ReactionOperations } = require('../api/schemas');
 
+const LIST_CHATS_PAGE = 1;
+const LIST_CHATS_PER_PAGE = 25;
+const TYPING_PAUSE_MS = 2000;
+const EDIT_WINDOW_MINUTES = 15;
+
 /**
  * Example usage of Agentic AI Chat Service API
  */
@@ -45,8 +50,8 @@ async function apiExamples() {
     console.log('\n📱 Example 3: Listing all chats...');
     
     const chatsResponse = await apiClient.listChats({
-      page: 1,
-      perPage: 25,
+      page: LIST_CHATS_PAGE,
+      perPage: LIST_CHATS_PER_PAGE,
     });
     console.log('✅ Chats retrieved:', chatsResponse.data);
 
@@ -82,7 +87,7 @@ async function apiExamples() {
     console.log('✅ Typing indicator started');
 
     // Wait a bit
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, TYPING_PAUSE_MS));
 
     console.log('\n📱 Stopping typing indicator...');
     await apiClient.stopTyping(createdChatId);
@@ -102,7 +107,7 @@ async function apiExamples() {
         text: 'This message has been edited!',
       };
 
-      // Note: Messages can only be edited within 15 minutes of creation
+      // Note: Messages can only be edited within EDIT_WINDOW_MINUTES minutes of creation
       try {
         const editResponse = await apiClient.editChatMessage(createdChatId, messageToEdit.id, editPayload);
         console.log('✅ Message edited:', editResponse.data);
