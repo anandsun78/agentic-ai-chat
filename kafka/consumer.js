@@ -1,7 +1,7 @@
 const { getKafkaInstance, getTopicName, getConsumerGroup, validateConfig } = require('./config');
 const { CONFIG } = require('../config/constants');
 
-const { events } = CONFIG;
+const { events, kafka } = CONFIG;
 
 /**
  * Kafka consumer for inbound events
@@ -28,13 +28,13 @@ class KafkaConsumer {
       
       this.consumer = kafkaClient.consumer({
         groupId: this.consumerGroup,
-        sessionTimeout: 30000,
-        heartbeatInterval: 3000,
-        maxInFlightRequests: 1,
-        rebalanceTimeout: 60000, // Extra time for rebalance
+        sessionTimeout: kafka.sessionTimeoutMs,
+        heartbeatInterval: kafka.heartbeatIntervalMs,
+        maxInFlightRequests: kafka.maxInFlightRequests,
+        rebalanceTimeout: kafka.rebalanceTimeoutMs, // Extra time for rebalance
         retry: {
-          initialRetryTime: 100,
-          retries: 8,
+          initialRetryTime: kafka.retryInitialMs,
+          retries: kafka.retryCount,
         },
         // Force protocol compatibility
         allowAutoTopicCreation: false,
@@ -228,7 +228,7 @@ class KafkaConsumer {
         // Try to disconnect and wait before retrying
         try {
           await this.consumer.disconnect();
-          await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+          await new Promise(resolve => setTimeout(resolve, kafka.consumerErrorBackoffMs));
           console.log('   Retrying connection...');
           await this.consumer.connect();
           await this.subscribe();

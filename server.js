@@ -11,7 +11,7 @@ const KafkaConsumer = require('./kafka/consumer');
 const AgenticAPIClient = require('./api/agentic-client');
 const SocialNetworkAgent = require('./backend/chatbot/service');
 const { CONFIG } = require('./config/constants');
-const { events, firebase, kafka, messaging } = CONFIG;
+const { events, firebase, kafka, messaging, server: serverConfig, matching } = CONFIG;
 // Firebase service - handle errors gracefully
 let firebaseBridge = null;
 try {
@@ -114,7 +114,7 @@ setTimeout(() => {
     console.error('   Stack:', error.stack);
     console.warn('   Kafka events will not be saved to Firebase until Firebase is configured.');
   }
-}, 1000);
+}, serverConfig.firebaseInitDelayMs);
 
 /**
  * Broadcast message to all connected WebSocket clients
@@ -185,7 +185,7 @@ function ensureConsumer() {
           console.log('   Event data:', JSON.stringify({
             event_id: eventData.event_id,
             from_phone: data.from_phone,
-            text: data.text?.substring(0, 50) + '...',
+            text: data.text?.substring(0, serverConfig.messagePreviewShort) + '...',
             chat_id: data.chat_id
           }));
           
@@ -228,7 +228,7 @@ function ensureConsumer() {
       console.log(`   chatbotAgent exists: ${!!chatbotAgent}`);
       console.log(`   hasText: ${hasText}`);
       console.log(`   hasAttachments: ${hasAttachments}`);
-      console.log(`   text: ${data.text?.substring(0, 50) || '(no text)'}`);
+      console.log(`   text: ${data.text?.substring(0, serverConfig.messagePreviewShort) || '(no text)'}`);
       
       if (chatbotAgent && (hasText || hasAttachments)) {
         console.log(`✅ Triggering chatbot response...`);
@@ -320,7 +320,7 @@ function ensureConsumer() {
           console.log('   Event data:', JSON.stringify({
             event_id: eventData.event_id,
             from_phone: data.from_phone,
-            text: data.text?.substring(0, 50) + '...',
+            text: data.text?.substring(0, serverConfig.messagePreviewShort) + '...',
             chat_id: data.chat_id
           }));
           
@@ -417,7 +417,7 @@ async function handleChatbotReply(phoneNumber, messageText, chatId, service = me
     }
 
     const responseText = result.response;
-    console.log(`✅ Chatbot generated response: ${responseText.substring(0, 100)}...`);
+    console.log(`✅ Chatbot generated response: ${responseText.substring(0, serverConfig.messagePreviewLong)}...`);
 
     // Send reply via Agentic API
     if (!agenticClient) {
@@ -428,7 +428,7 @@ async function handleChatbotReply(phoneNumber, messageText, chatId, service = me
     try {
       console.log(`📤 Sending chatbot response to Agentic API...`);
       console.log(`   Chat ID: ${chatId}`);
-      console.log(`   Response: ${responseText.substring(0, 50)}...`);
+      console.log(`   Response: ${responseText.substring(0, serverConfig.messagePreviewShort)}...`);
       
       // Use same format as listen-and-reply.js (npm run reply)
       const replyResponse = await agenticClient.createChatMessage(chatId, {
@@ -579,7 +579,7 @@ app.post('/api/matching/find', async (req, res) => {
         // Try configured messages collection - get all messages and filter by phone number
         const messagesSnapshot = await db.collection(firebase.collections.messages)
           .orderBy('timestamp', 'desc')
-          .limit(100)
+          .limit(serverConfig.conversationFetchLimit)
           .get();
         
         messagesSnapshot.forEach(doc => {
@@ -592,7 +592,7 @@ app.post('/api/matching/find', async (req, res) => {
             if (text && text.length > 0) {
               conversations.push({
                 text: text,
-                type: msg.type || msg.eventType || 'message',
+                type: msg.type || msg.eventType || messaging.defaultMessageType,
                 timestamp: msg.timestamp || msg.createdAt
               });
             }
@@ -1106,14 +1106,14 @@ function matchProfilesFromMock(userData, conversations, mockProfiles) {
   
   // Score each profile based on relevance
   const scored = mockProfiles.map(profile => {
-    let score = 50; // Base score
+    let score = matching.baseScore; // Base score
     
     // Check profession match
     if (userData?.profession) {
       const userProfession = userData.profession.toLowerCase();
       const profileProfession = (profile.profession || '').toLowerCase();
       if (profileProfession === userProfession || profileProfession.includes(userProfession) || userProfession.includes(profileProfession)) {
-        score += 20;
+        score += matching.weights.professionMatch;
       }
     }
     
@@ -1122,10 +1122,10 @@ function matchProfilesFromMock(userData, conversations, mockProfiles) {
       const userLocation = userData.location.toLowerCase();
       const profileLocation = (profile.location || '').toLowerCase();
       if (profileLocation.includes('new york') && userLocation.includes('new york')) {
-        score += 15;
+        score += matching.weights.locationMatch;
       } else if ((profileLocation.includes('california') || profileLocation.includes('ca') || profileLocation.includes('san francisco')) && 
                  (userLocation.includes('california') || userLocation.includes('ca') || userLocation.includes('san francisco'))) {
-        score += 15;
+        score += matching.weights.locationMatch;
       }
     }
     
@@ -1135,29 +1135,29 @@ function matchProfilesFromMock(userData, conversations, mockProfiles) {
       const matchingSkills = profile.skills.filter(skill => 
         userSkills.some(us => skill.toLowerCase().includes(us) || us.includes(skill.toLowerCase()))
       );
-      score += matchingSkills.length * 5;
+      score += matchingSkills.length * matching.weights.skillMatch;
     }
     
     // Check interests match
     if (profile.interests && Array.isArray(profile.interests)) {
       profile.interests.forEach(interest => {
         if (allText.includes(interest.toLowerCase())) {
-          score += 10;
+          score += matching.weights.interestMatch;
         }
       });
     }
     
     // Check specialty match
     if (profile.specialty && allText.includes(profile.specialty.toLowerCase())) {
-      score += 15;
+      score += matching.weights.specialtyMatch;
     }
     
     // Check bio keywords
     if (profile.bio) {
       const bioWords = profile.bio.toLowerCase().split(' ');
       bioWords.forEach(word => {
-        if (word.length > 4 && allText.includes(word)) {
-          score += 5;
+        if (word.length > matching.bioKeywordMinLength && allText.includes(word)) {
+          score += matching.weights.bioKeywordMatch;
         }
       });
     }
@@ -1165,7 +1165,7 @@ function matchProfilesFromMock(userData, conversations, mockProfiles) {
     // Boost score for tech professionals if user is in tech
     if (userData?.profession && userData.profession.toLowerCase().includes('tech')) {
       if (profile.profession && profile.profession.toLowerCase() === 'tech') {
-        score += 10;
+        score += matching.weights.techBoost;
       }
     }
     
@@ -1184,17 +1184,17 @@ function matchProfilesFromMock(userData, conversations, mockProfiles) {
       companyType: profile.companyType,
       skills: profile.skills || [],
       interests: profile.interests || [],
-      score: Math.min(100, score),
-      matchReason: score > 80 ? 'Excellent match based on your profile and interests' : 
-                   score > 70 ? 'Strong match based on your profile' : 
-                   score > 60 ? 'Good professional match' : 
+      score: Math.min(matching.maxScore, score),
+      matchReason: score > matching.thresholds.excellent ? 'Excellent match based on your profile and interests' : 
+                   score > matching.thresholds.strong ? 'Strong match based on your profile' : 
+                   score > matching.thresholds.good ? 'Good professional match' : 
                    'Diverse professional connection in tech'
     };
   });
   
   // Sort by score and return all matches (or top 20 if too many)
   const sorted = scored.sort((a, b) => b.score - a.score);
-  return sorted.slice(0, 30); // Return top 30 matches
+  return sorted.slice(0, matching.matchLimit); // Return top matches
 }
 
 function selectMatchesFromMock(userData, conversations, mockProfiles) {
@@ -1216,7 +1216,7 @@ function parseClaudeMatchSelection(analysis, mockProfiles) {
             if (profile) {
               return {
                 ...profile,
-                score: selection.score || 50,
+                score: selection.score || matching.baseScore,
                 matchReason: selection.reason || 'Good match based on profile analysis'
               };
             }
@@ -1284,7 +1284,7 @@ MATCHING CRITERIA:
 ${JSON.stringify(matchingCriteria, null, 2)}
 
 LINKEDIN PROFILES TO SCORE:
-${JSON.stringify(matches.slice(0, 20), null, 2)}
+${JSON.stringify(matches.slice(0, matching.scoredProfilesLimit), null, 2)}
 
 For each profile, provide a relevance score (0-100) and brief explanation.
 Respond in JSON format:
@@ -1301,8 +1301,8 @@ Respond in JSON format:
 
   try {
     const response = await claudeClient.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 2000,
+      model: matching.scoringModel,
+      max_tokens: matching.scoringMaxTokens,
       messages: [{
         role: 'user',
         content: scoringPrompt
@@ -1318,7 +1318,7 @@ Respond in JSON format:
         const scored = parsed.scoredMatches?.find(s => s.index === index);
         return {
           ...match,
-          score: scored?.score || 50,
+          score: scored?.score || matching.baseScore,
           matchReason: scored?.reason || ''
         };
       });
@@ -1330,7 +1330,7 @@ Respond in JSON format:
   }
 
   // Fallback: return matches as-is
-  return matches.map(m => ({ ...m, score: 50, matchReason: '' }));
+  return matches.map(m => ({ ...m, score: matching.baseScore, matchReason: '' }));
 }
 
 /**

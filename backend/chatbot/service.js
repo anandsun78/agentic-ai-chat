@@ -4,6 +4,7 @@ const { CONFIG } = require('../../config/constants');
 
 const { collections } = CONFIG.firebase;
 const { defaultMessageType } = CONFIG.messaging;
+const { chatbot } = CONFIG;
 
 class SocialNetworkAgent {
   constructor() {
@@ -16,11 +17,11 @@ class SocialNetworkAgent {
     }
     // Default to the smaller Claude model allowed for this key.
     // Higher tier models are not enabled for this account.
-    this.model = 'claude-3-haiku-20240307';
-    this.maxContextMessages = 20;
-    this.minResponseLength = 5; // Allow shorter responses
-    this.maxResponseLength = 150; // Short, seductive responses (1-2 sentences)
-    this.temperature = 0.9; // Higher for more creative, flirty, seductive responses
+    this.model = chatbot.model;
+    this.maxContextMessages = chatbot.maxContextMessages;
+    this.minResponseLength = chatbot.minResponseLength; // Allow shorter responses
+    this.maxResponseLength = chatbot.maxResponseLength; // Short, seductive responses (1-2 sentences)
+    this.temperature = chatbot.temperature; // Higher for more creative, flirty, seductive responses
   }
 
   /**
@@ -36,7 +37,7 @@ class SocialNetworkAgent {
     try {
       console.log('🤖 Social Network Agent processing message...');
       console.log(`   From: ${phoneNumber}`);
-      console.log(`   Message: ${messageText ? messageText.substring(0, 100) + '...' : '(no text)'}`);
+      console.log(`   Message: ${messageText ? messageText.substring(0, chatbot.logPreviewLength) + '...' : '(no text)'}`);
       console.log(`   Chat ID: ${chatId}`);
       console.log(`   Attachments: ${attachments.length} file(s)`);
 
@@ -59,7 +60,7 @@ class SocialNetworkAgent {
           normalizedText = normalizedText
             ? `${normalizedText}\n\n[Voice message: ${voiceTranscript}]`
             : voiceTranscript;
-          console.log(`✅ Audio transcribed: ${voiceTranscript.substring(0, 100)}...`);
+          console.log(`✅ Audio transcribed: ${voiceTranscript.substring(0, chatbot.logPreviewLength)}...`);
         } else {
           // No transcript available; mark it without sounding robotic
           normalizedText = normalizedText || '[User sent a voice message]';
@@ -84,7 +85,7 @@ class SocialNetworkAgent {
         attachments
       );
 
-      console.log('✅ Generated response:', reply.substring(0, 100) + '...');
+      console.log('✅ Generated response:', reply.substring(0, chatbot.logPreviewLength) + '...');
 
       return {
         response: reply,
@@ -255,8 +256,8 @@ class SocialNetworkAgent {
       
       const apiResponse = await this.llmClient.messages.create({
         model: this.model,
-        max_tokens: 80, // Short, seductive responses (1-2 sentences)
-        temperature: 0.9, // Higher for more creative, flirty responses
+        max_tokens: chatbot.maxTokens, // Short, seductive responses (1-2 sentences)
+        temperature: chatbot.temperature, // Higher for more creative, flirty responses
         messages: [{
           role: 'user',
           content: messagePayload
@@ -362,7 +363,7 @@ ${userProfile.interests && userProfile.interests.length > 0 ? `Interests: ${user
     // Add conversation history
     if (conversationHistory.length > 0) {
       promptBody += `RECENT CONVERSATION HISTORY:\n`;
-      conversationHistory.slice(-10).forEach((msg, index) => {
+      conversationHistory.slice(-chatbot.historyWindow).forEach((msg, index) => {
         const role = msg.from === 'user' ? 'User' : 'You';
         promptBody += `${role}: ${msg.text}\n`;
       });
@@ -527,7 +528,7 @@ Your response (ONLY the message text, nothing else):`;
       const lastQuestion = truncated.lastIndexOf('?');
       const lastPunctuation = Math.max(lastPeriod, lastExclamation, lastQuestion);
       
-      if (lastPunctuation > this.maxResponseLength * 0.5) {
+      if (lastPunctuation > this.maxResponseLength * chatbot.truncationThresholdRatio) {
         response = truncated.substring(0, lastPunctuation + 1);
       } else {
         response = truncated.trim();

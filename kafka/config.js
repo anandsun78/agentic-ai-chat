@@ -1,5 +1,8 @@
 require('dotenv').config();
 const { Kafka } = require('kafkajs');
+const { CONFIG } = require('../config/constants');
+
+const { kafka: kafkaConstants } = CONFIG;
 
 /**
  * Kafka config for Confluent Cloud
@@ -14,11 +17,11 @@ const kafkaConfig = {
     username: process.env.KAFKA_SASL_USERNAME || '',
     password: process.env.KAFKA_SASL_PASSWORD || '',
   },
-  connectionTimeout: 3000,
-  requestTimeout: 30000,
+  connectionTimeout: kafkaConstants.connectionTimeoutMs,
+  requestTimeout: kafkaConstants.requestTimeoutMs,
   retry: {
-    initialRetryTime: 100,
-    retries: 8,
+    initialRetryTime: kafkaConstants.retryInitialMs,
+    retries: kafkaConstants.retryCount,
   },
 };
 
