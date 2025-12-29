@@ -1,6 +1,6 @@
 # Agentic AI Chat Service API Documentation
 
-Complete API client implementation for the Agentic AI Chat Service Hackathon API.
+Complete API client implementation for the Agentic AI Chat Service.
 
 ## Setup
 

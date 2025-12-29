@@ -709,15 +709,6 @@ ISC
 
 ---
 
-## Contributing
-
-This is a hackathon project. For improvements or bug fixes, please:
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
-
----
-
 ## Support
 
 For questions or issues:
@@ -737,5 +728,4 @@ For questions or issues:
 
 ---
 
-**Version**: 2.0.0
 **Last Updated**: December 2025
