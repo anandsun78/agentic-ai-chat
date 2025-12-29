@@ -32,7 +32,7 @@ cp .env.example .env
 
 2. **Fill in your credentials:**
 
-Open `.env` and update it with your actual Kafka credentials from your hackathon dashboard:
+Open `.env` and update it with your actual Kafka credentials from your Confluent Cloud dashboard:
 
 ```env
 KAFKA_BOOTSTRAP_SERVERS=pkc-619z3.us-east1.gcp.confluent.cloud:9092
@@ -289,7 +289,6 @@ Agentic AI Chat/
 ## Support
 
 For issues or questions:
-- Check the Agentic API documentation in your hackathon dashboard
+- Check the Agentic API documentation in your Confluent Cloud dashboard
 - Review Kafka.js documentation: https://kafka.js.org/
 - Check Confluent Cloud documentation for cluster-specific issues
-

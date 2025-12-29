@@ -724,7 +724,6 @@ For questions or issues:
 - **agentic-ai-chat.app** for iMessage API integration
 - **Confluent Cloud** for Kafka messaging
 - **Firebase** for real-time database
-- Built with ❤️ for hackathon
 
 ---
 
