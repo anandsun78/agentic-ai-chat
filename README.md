@@ -96,7 +96,7 @@ Agentic AI Chat is a social networking platform that:
 
 ---
 
-## Installation
+## Installation Steps
 
 ### 1. Clone the Repository
 

@@ -8,7 +8,7 @@ This guide will help you set up and use Kafka integration with your Confluent Cl
 - npm or yarn
 - Access to your Confluent Cloud Kafka cluster credentials
 
-## Installation
+## Installation Steps
 
 1. **Install dependencies:**
 
