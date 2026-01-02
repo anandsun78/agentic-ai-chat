@@ -1,4 +1,4 @@
-# Kafka Setup Guide for Agentic AI Chat
+# Kafka Setup Guide for Agentic AI Chat App
 
 This guide will help you set up and use Kafka integration with your Confluent Cloud cluster.
 
