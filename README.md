@@ -1,4 +1,4 @@
-# Agentic AI Chat - AI-Powered Social Networking Platform
+# Agentic AI Chat - AI Powered Social Networking Platform
 
 An intelligent social networking application that combines professional matching with AI-powered conversations through iMessage integration. Built for seamless connections using Claude AI, Kafka messaging, and Firebase.
 
